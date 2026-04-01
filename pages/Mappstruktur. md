@@ -1,0 +1,15 @@
+TCGCOLLECTORWEB/
+├── app.py
+├── database.py
+├── currency_utils.py
+├── grading_utils.py
+├── requirements.txt
+└── pages/
+    ├── 1_dashboard.py
+        ├── 2_collection.py
+            ├── 3_add_item.py
+                ├── 4_sync.py
+                    ├── 5_wishlist.py
+                        ├── 6_sets.py
+                            └── 7_card_details.py      # NY: Detaljvyn från dina bilder
+                            
