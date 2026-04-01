@@ -3,3 +3,4 @@ SQLAlchemy
 PyMySQL
 pandas
 bcrypt
+requests
