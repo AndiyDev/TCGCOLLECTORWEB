@@ -6,7 +6,7 @@ st.title("Search Products")
 query = st.text_input("Search name or set...", placeholder="e.g. Charizard")
 
 if query:
-    res = requests.get(f"https://api.pokemontcg.io/v2/cards?q=name:\"{query}\" OR set.name:\"{query}*"&orderBy=-set.releaseDate\"&pageSize=10")
+    api_url = f"https://api.pokemontcg.io/v2/cards?q=name:*{query}* OR set.name:*{query}*&orderBy=-set.releaseDate&pageSize=10"
     if res.status_code == 200:
         data = res.json().get('data', [])
         

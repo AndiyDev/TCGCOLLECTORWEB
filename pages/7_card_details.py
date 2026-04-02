@@ -35,6 +35,24 @@ with c2:
     local_price = convert_price(base_price, st.session_state.currency)
     st.subheader(f"{local_price:,.2f} {st.session_state.currency}")
 
+    # --- Smarta Marknadsplatslänkar (Din logik) ---
+    st.write("🔍 **Sök på marknadsplatser:**")
+    
+    # Bygg söksträngar
+    raw_search = f"{card['name']} {card['set']['name']} {card['number']}"
+    search_q = raw_search.replace(" ", "+")
+    cm_search = card['name'].replace(' ', '+')
+    
+    col_links1, col_links2, col_links3 = st.columns(3)
+    with col_links1:
+        st.link_button("Cardmarket", f"https://www.cardmarket.com/en/Pokemon/Products/Search?searchString={cm_search}", use_container_width=True)
+    with col_links2:
+        st.link_button("Tradera", f"https://www.tradera.com/search?q={search_q}", use_container_width=True)
+    with col_links3:
+        st.link_button("eBay", f"https://www.ebay.com/sch/i.html?_nkw={search_q}", use_container_width=True)
+
+    st.divider()
+
     st.divider()
     st.write("### Manage Quantity")
     
