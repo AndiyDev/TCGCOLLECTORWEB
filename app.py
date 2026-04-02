@@ -1,8 +1,8 @@
 import streamlit as st
-from database import init_db, verify_user, register_user, get_user_id_by_name, get_user_collection, get_user_sealed
+from database import init_db, verify_user, register_user, get_user_id_by_name, get_user_portfolio, get_user_sealed
 from currency_utils import convert_price
 
-    # 1. Konfiguration
+# 1. Konfiguration
 st.set_page_config(page_title="Collectr Pro", layout="wide", initial_sidebar_state="collapsed")
 
 # 2. Design & PWA
