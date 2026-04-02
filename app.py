@@ -1,28 +1,28 @@
 import streamlit as st
-from database import init_db, verify_user
+from database import init_db, verify_user, register_user
 
-# Måste ligga allra först
+# 1. Konfiguration (Måste ligga allra först)
 st.set_page_config(page_title="Collectr Pro", layout="wide", initial_sidebar_state="collapsed")
 
-# Initiera säker session_state
+# 2. Initiera säker session_state
 defaults = {"logged_in": False, "user_id": None, "username": None, "currency": "SEK"}
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
+# 3. Initiera databas
 try:
     init_db()
 except Exception as e:
     st.error(f"Databasfel: {e}")
     st.stop()
 
-if not st.session_state.logged_in:
+# 4. Skapa inloggningsskärmen som en funktion
+def login_screen():
     st.title("Collectr Pro")
     
-    # Skapa flikar för Logga in / Registrera
     tab_login, tab_register = st.tabs(["Logga in", "Skapa konto"])
     
-    # --- FLIK 1: LOGGA IN ---
     with tab_login:
         u_login = st.text_input("Användarnamn", key="login_u")
         p_login = st.text_input("Lösenord", type="password", key="login_p")
@@ -37,7 +37,6 @@ if not st.session_state.logged_in:
             else:
                 st.error("Ogiltigt användarnamn eller lösenord.")
                 
-    # --- FLIK 2: REGISTRERA ---
     with tab_register:
         u_reg = st.text_input("Välj Användarnamn", key="reg_u")
         p_reg = st.text_input("Välj Lösenord", type="password", key="reg_p")
@@ -54,10 +53,9 @@ if not st.session_state.logged_in:
                     st.success("Konto skapat! Byt till fliken 'Logga in' för att fortsätta.")
                 else:
                     st.error("Användarnamnet är redan upptaget. Välj ett annat.")
-    
-    st.stop()
 
-pg = st.navigation([
+# 5. Definiera alla inloggade sidor
+app_pages = [
     st.Page("pages/1_dashboard.py", title="Home", icon="🏠"),
     st.Page("pages/3_add_item.py", title="Search", icon="🔍"),
     st.Page("pages/2_collection.py", title="Portfolio", icon="📁"),
@@ -66,6 +64,16 @@ pg = st.navigation([
     st.Page("pages/4_sync.py", title="Sync Prices", icon="🔄"),
     st.Page("pages/7_card_details.py", title="Details", icon="📄"),
     st.Page("pages/8_profile.py", title="Profile", icon="👤")
-])
+]
 
+# 6. Dynamisk Navigation (Låser systemet)
+if not st.session_state.logged_in:
+    # Om utloggad: Skapa en "Inloggning"-sida och visa BARA den
+    login_page = st.Page(login_screen, title="Autentisering", icon="🔒")
+    pg = st.navigation([login_page])
+else:
+    # Om inloggad: Visa alla appens riktiga sidor
+    pg = st.navigation(app_pages)
+
+# Kör navigeringen!
 pg.run()
