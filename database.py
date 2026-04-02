@@ -12,10 +12,9 @@ def hash_password(password):
 def init_db():
     conn = get_conn()
     with conn.session as s:
-        # Användare
+        # Users
         s.execute(text("CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(50) UNIQUE, password VARCHAR(255))"))
-        
-        # Global Katalog (Varje kort sparas en gång)
+        # Global Catalog
         s.execute(text("""
             CREATE TABLE IF NOT EXISTS global_cards (
                 api_id VARCHAR(100) PRIMARY KEY,
@@ -28,8 +27,7 @@ def init_db():
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
         """))
-        
-        # Användarens Portfölj (Varje rad är ett fysiskt kort du äger)
+        # User Portfolio
         s.execute(text("""
             CREATE TABLE IF NOT EXISTS user_items (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -47,8 +45,7 @@ def init_db():
                 FOREIGN KEY (api_id) REFERENCES global_cards(api_id)
             )
         """))
-
-        # Sealed Products
+        # Sealed
         s.execute(text("""
             CREATE TABLE IF NOT EXISTS sealed_collection (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -62,76 +59,48 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """))
+        # History & Wishlist
+        s.execute(text("CREATE TABLE IF NOT EXISTS portfolio_history (user_id INT, recorded_date DATE, total_value DECIMAL(12,2), PRIMARY KEY(user_id, recorded_date))"))
+        s.execute(text("CREATE TABLE IF NOT EXISTS wishlist (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, item_name VARCHAR(255), target_price DECIMAL(10,2), current_price DECIMAL(10,2), image_url VARCHAR(500))"))
         s.commit()
 
 # --- AUTH ---
 def register_user(username, password):
-    conn = get_conn()
-    hashed = hash_password(password)
+    conn = get_conn(); hashed = hash_password(password)
     with conn.session as s:
         try:
             s.execute(text("INSERT INTO users (username, password) VALUES (:u, :p)"), {"u": username, "p": hashed})
-            s.commit()
-            return True
+            s.commit(); return True
         except: return False
 
 def verify_user(username, password):
-    conn = get_conn()
-    hashed = hash_password(password)
+    conn = get_conn(); hashed = hash_password(password)
     with conn.session as s:
         res = s.execute(text("SELECT id FROM users WHERE username = :u AND password = :p"), {"u": username, "p": hashed}).fetchone()
         return res[0] if res else None
 
-# --- CORE LOGIC ---
+# --- ITEMS ---
 def add_item_to_user(uid, card_data, variant, p_price, is_graded=False, g_comp=None, g_val=None, cert=None):
     conn = get_conn()
     with conn.session as s:
-        # Uppdatera globala katalogen
         s.execute(text("""
             INSERT INTO global_cards (api_id, name, set_id, set_name, card_number, image_url, market_price)
             VALUES (:aid, :n, :sid, :sn, :num, :img, :mp)
             ON DUPLICATE KEY UPDATE market_price = :mp, image_url = :img
-        """), {
-            "aid": card_data['id'], "n": card_data['name'], "sid": card_data['set']['id'],
-            "sn": card_data['set']['name'], "num": card_data['number'], 
-            "img": card_data['images']['small'], "mp": card_data.get('cardmarket', {}).get('prices', {}).get('averageSellPrice', 0.0)
-        })
-        # Lägg till i användarens lista
-        s.execute(text("""
-            INSERT INTO user_items (user_id, api_id, variant, purchase_price, is_graded, grade_company, grade_value, cert_number)
-            VALUES (:uid, :aid, :var, :pp, :ig, :gc, :gv, :cert)
-        """), {"uid": uid, "aid": card_data['id'], "var": variant, "pp": p_price, "ig": is_graded, "gc": g_comp, "gv": g_val, "cert": cert})
+        """), {"aid": card_data['id'], "n": card_data['name'], "sid": card_data['set']['id'], "sn": card_data['set']['name'], "num": card_data['number'], "img": card_data['images']['small'], "mp": card_data.get('cardmarket', {}).get('prices', {}).get('averageSellPrice', 0.0)})
+        s.execute(text("INSERT INTO user_items (user_id, api_id, variant, purchase_price, is_graded, grade_company, grade_value, cert_number) VALUES (:uid, :aid, :var, :pp, :ig, :gc, :gv, :cert)"), {"uid": uid, "aid": card_data['id'], "var": variant, "pp": p_price, "ig": is_graded, "gc": g_comp, "gv": g_val, "cert": cert})
         s.commit()
 
 def get_user_portfolio(uid):
     conn = get_conn()
-    return conn.query("""
-        SELECT ui.*, gc.name, gc.image_url, gc.market_price, gc.set_name
-        FROM user_items ui
-        JOIN global_cards gc ON ui.api_id = gc.api_id
-        WHERE ui.user_id = :uid
-    """, params={"uid": uid}, ttl=0)
+    return conn.query("SELECT ui.*, gc.name, gc.image_url, gc.market_price, gc.set_id, gc.set_name FROM user_items ui JOIN global_cards gc ON ui.api_id = gc.api_id WHERE ui.user_id = :uid", params={"uid": uid}, ttl=0)
 
-def add_sealed_product(uid, name, p_type, qty, p_price, m_val, img):
-    conn = get_conn()
-    with conn.session as s:
-        s.execute(text("INSERT INTO sealed_collection (user_id, product_name, product_type, quantity, purchase_price, market_value, image_url) VALUES (:uid, :n, :t, :q, :pp, :mv, :img)"), {"uid": uid, "n": name, "t": p_type, "q": qty, "pp": p_price, "mv": m_val, "img": img})
-        s.commit()
-
+# --- UTILS ---
 def get_user_sealed(uid):
-    conn = get_conn()
-    return conn.query("SELECT * FROM sealed_collection WHERE user_id = :uid", params={"uid": uid}, ttl=0)
+    return get_conn().query("SELECT * FROM sealed_collection WHERE user_id = :uid", params={"uid": uid}, ttl=0)
 
 def get_portfolio_history(uid):
-    conn = get_conn()
-    return conn.query("SELECT recorded_date, total_value FROM portfolio_history WHERE user_id = :uid ORDER BY recorded_date ASC", params={"uid": uid}, ttl=0)
+    return get_conn().query("SELECT recorded_date, total_value FROM portfolio_history WHERE user_id = :uid ORDER BY recorded_date ASC", params={"uid": uid}, ttl=0)
 
 def get_wishlist(uid):
-    conn = get_conn()
-    return conn.query("SELECT * FROM wishlist WHERE user_id = :uid", params={"uid": uid}, ttl=0)
-
-def delete_from_wishlist(item_id, uid):
-    conn = get_conn()
-    with conn.session as s:
-        s.execute(text("DELETE FROM wishlist WHERE id = :id AND user_id = :uid"), {"id": item_id, "uid": uid})
-        s.commit()
+    return get_conn().query("SELECT * FROM wishlist WHERE user_id = :uid", params={"uid": uid}, ttl=0)
