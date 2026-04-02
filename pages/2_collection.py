@@ -85,3 +85,20 @@ with col_next:
     if st.button("Nästa ➡️", disabled=(st.session_state.current_page == total_pages)):
         st.session_state.current_page += 1
         st.rerun()
+
+st.divider()
+st.header("Sealed Collection")
+sealed_df = get_user_sealed(st.session_state.user_id)
+
+if not sealed_df.empty:
+    cols = st.columns(4)
+    for idx, row in sealed_df.iterrows():
+        with cols[idx % 4]:
+            st.image(row['image_url'], use_container_width=True)
+            st.markdown(f"**{row['product_name']}**")
+            st.write(f"{convert_price(row['market_value'], currency):,.2f} {currency}")
+            if st.button("🗑️", key=f"dels_{row['id']}"):
+                delete_sealed(row['id'], st.session_state.user_id)
+                st.rerun()
+else:
+    st.info("Inga oöppnade produkter än.")

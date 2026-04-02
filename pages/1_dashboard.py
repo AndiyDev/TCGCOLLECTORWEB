@@ -16,9 +16,11 @@ if not w_df.empty:
         st.error(f"🔔 {len(alerts)} kort på din önskelista har nått ditt målpris!")
 
 # --- Totalvärde & ROI ---
-res = conn.query("SELECT SUM(market_value * quantity) as tot_val, SUM(purchase_price * quantity) as tot_cost FROM collection WHERE user_id = :u", params={"u": uid})
-total_value = res.iloc[0]['tot_val'] or 0.0
-total_cost = res.iloc[0]['tot_cost'] or 0.0
+res_cards = conn.query("SELECT SUM(market_value * quantity) as v, SUM(purchase_price * quantity) as c FROM collection WHERE user_id = :u", params={"u": uid})
+res_sealed = conn.query("SELECT SUM(market_value * quantity) as v, SUM(purchase_price * quantity) as c FROM sealed_collection WHERE user_id = :u", params={"u": uid})
+
+total_val = (res_cards.iloc[0]['v'] or 0) + (res_sealed.iloc[0]['v'] or 0)
+total_cost = (res_cards.iloc[0]['c'] or 0) + (res_sealed.iloc[0]['c'] or 0)
 
 total_value_curr = convert_price(total_value, currency)
 total_cost_curr = convert_price(total_cost, currency)
