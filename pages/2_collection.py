@@ -4,7 +4,7 @@ from database import get_user_collection, delete_from_collection
 from currency_utils import convert_price
 
 st.title("Portfolio")
-df = get_user_collection(st.session_state.user_id)
+df = conn.query("SELECT * FROM collection WHERE user_id = :uid", params={"uid": st.session_state.user_id}, ttl=0)
 currency = st.session_state.currency
 
 if df.empty:
