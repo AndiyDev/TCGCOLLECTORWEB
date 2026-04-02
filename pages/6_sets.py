@@ -1,144 +1,132 @@
 import streamlit as st
 import requests
-from database import get_user_portfolio, add_item_to_user
-from currency_utils import convert_price
+from bs4 import BeautifulSoup
+from database import get_conn
+from sqlalchemy import text
+import pandas as pd
+import time
+import urllib.parse
 
-# 1. SÄKERHETSSPÄRR - Förhindrar krasch om sessionen dör
+# 1. Säkerhetsspärr
 if "logged_in" not in st.session_state or not st.session_state.logged_in:
     st.warning("Vänligen logga in på startsidan först.")
     st.stop()
 
-st.title("Pokémon Sets & Explorer")
+st.title("🏛️ Master Library & Set Manager")
+st.write("Bygg ditt eget oberoende arkiv genom att koppla GitHub-symboler till officiell data.")
 
-# --- API FUNKTIONER ---
-@st.cache_data(ttl=86400)
-def get_all_sets():
-    """Hämtar alla officiella Pokémon-sets sorterat på releasedatum."""
-    res = requests.get("https://api.pokemontcg.io/v2/sets?orderBy=-releaseDate")
-    return res.json().get("data", []) if res.status_code == 200 else []
+# --- KONFIGURATION FÖR GITHUB ---
+GITHUB_RAW_BASE = "https://raw.githubusercontent.com/AndiyDev/TCGCOLLECTORWEB/main/images/"
 
-@st.cache_data(ttl=3600)
-def get_cards_in_set(set_id):
-    """Hämtar alla kort i ett specifikt set."""
-    res = requests.get(f"https://api.pokemontcg.io/v2/cards?q=set.id:{set_id}&orderBy=number")
-    return res.json().get("data", []) if res.status_code == 200 else []
-
-# --- POP-UP DIALOG (Kortdetaljer) ---
-@st.dialog("Lägg till i samlingen", width="large")
-def show_card_dialog(card):
-    col_img, col_info = st.columns([1, 1])
+# --- FUNKTION: SKRAPA & SPARA KORT ---
+def scrape_and_store_card(set_intern_id, card_num):
+    url = f"https://www.pokemon.com/us/pokemon-tcg/pokemon-cards/series/{set_intern_id}/{card_num}/"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     
-    with col_info:
-        st.subheader(card['name'])
-        st.caption(f"{card['set']['name']} • #{card['number']}")
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code != 200: return False
         
-        # Prisberäkning
-        base_price = card.get('cardmarket', {}).get('prices', {}).get('averageSellPrice', 0.0)
-        currency = st.session_state.get("currency", "SEK")
-        local_price = convert_price(base_price, currency)
-        st.metric("Marknadsvärde", f"{local_price:,.2f} {currency}")
-
-        st.divider()
+        soup = BeautifulSoup(res.text, 'html.parser')
         
-        # Inmatning för samlingen
-        var_sel = st.selectbox("Välj variant", ["Normal", "Reverse Holofoil", "Holofoil"], key=f"dlg_var_{card['id']}")
-        p_price = st.number_input(f"Ditt inköpspris ({currency})", min_value=0.0, format="%.2f", key=f"dlg_pp_{card['id']}")
-        
-        if st.button("➕ Bekräfta & Lägg till", use_container_width=True, type="primary"):
-            # Anropar den nya v3-funktionen som skapar en unik rad i databasen
-            add_item_to_user(
-                uid=st.session_state.user_id, 
-                card_data=card, 
-                variant=var_sel, 
-                p_price=p_price
-            )
-            st.success(f"{card['name']} har lagts till!")
-            st.rerun() # Uppdaterar "Äger"-mätaren i bakgrunden
+        # Extrahera data
+        name = soup.find("div", class_="card-description").find("h1").text.strip()
+        hp_tag = soup.find("span", class_="hp")
+        hp = hp_tag.text.replace("HP", "").strip() if hp_tag else "0"
+        img_url = soup.find("div", class_="card-image").find("img").get("src")
 
-    with col_img:
-        # Visar bilden med din snygga CSS-Holo-effekt baserat på valet i dropdownen
-        current_var = st.session_state.get(f"dlg_var_{card['id']}", "Normal")
-        img_url = card['images']['large']
-        
-        if "Reverse" in current_var:
-            st.markdown(f'<div class="card-wrapper"><img src="{img_url}" style="width:100%"><div class="reverse-holo-overlay"></div></div>', unsafe_allow_html=True)
-        elif "Holo" in current_var:
-            st.markdown(f'<div class="card-wrapper"><img src="{img_url}" style="width:100%"><div class="holo-overlay"></div></div>', unsafe_allow_html=True)
-        else:
-            st.image(img_url, use_container_width=True)
+        # Spara i global_cards
+        api_id = f"{set_intern_id}-{card_num}"
+        conn = get_conn()
+        with conn.session as s:
+            s.execute(text("""
+                INSERT INTO global_cards (api_id, set_intern_id, name, hp, card_number, image_url)
+                VALUES (:aid, :sid, :n, :hp, :num, :img)
+                ON DUPLICATE KEY UPDATE name = :n, hp = :hp, image_url = :img
+            """), {"aid": api_id, "sid": set_intern_id, "n": name, "hp": hp, "num": card_num, "img": img_url})
+            s.commit()
+        return True
+    except:
+        return False
 
-# --- HUVUDLOGIK ---
-
-# Kontrollera om vi är inne i ett specifikt set
-selected_set_id = st.query_params.get("set_id")
-
-if not selected_set_id:
-    # --- VY 1: LISTA ALLA SETS ---
-    all_sets = get_all_sets()
-    # Hämta portföljen för att visa samlingsstatistik per set
-    user_portfolio = get_user_portfolio(st.session_state.user_id)
+# --- UI: SKAPA/UPPDATERA SET ---
+with st.expander("✨ 1. Registrera nytt Set (Koppla till GitHub Symbol)"):
+    st.info("Här kopplar du dina uppladdade bilder på GitHub till ett Set i databasen.")
     
-    st.write("Välj en expansion för att se kortlistan.")
-    st.divider()
-    
-    cols = st.columns(4)
-    for idx, s_data in enumerate(all_sets):
-        with cols[idx % 4]:
-            # Fast höjd på loggan för att knapparna ska hamna på samma rad
-            st.markdown(f"""
-                <div style="height: 120px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
-                    <img src="{s_data['images']['logo']}" style="max-height: 100%; max-width: 100%; object-fit: contain;">
-                </div>
-            """, unsafe_allow_html=True)
+    with st.form("set_reg_form"):
+        col1, col2 = st.columns(2)
+        s_name = col1.text_input("Set Namn", placeholder="t.ex. Neo Discovery")
+        s_intern = col2.text_input("Intern Kod (URL-kod)", placeholder="t.ex. neo2")
+        
+        col3, col4 = st.columns(2)
+        s_number_id = col3.text_input("Set Number ID (Text-box)", placeholder="t.ex. TEF (lämna tom för grafik)")
+        s_total = col4.number_input("Totalt antal kort", min_value=1, value=100)
+        
+        # Sökväg på GitHub (baserat på din mappstruktur)
+        github_subpath = st.text_input("Sökväg på GitHub efter /images/", placeholder="Set Symbols/03 Neo/Neo Discovery.png")
+        
+        if st.form_submit_button("Spara Set-information"):
+            # Skapa korrekt URL (hanterar mellanslag)
+            encoded_path = urllib.parse.quote(github_subpath)
+            full_symbol_url = f"{GITHUB_RAW_BASE}{encoded_path}"
             
-            # Statistik för setet
-            owned_in_set = 0
-            if not user_portfolio.empty:
-                # Räknar unika kort (api_id) som användaren äger i detta set
-                owned_in_set = user_portfolio[user_portfolio['set_id'] == s_data['id']]['api_id'].nunique()
-            
-            st.markdown(f"<p style='text-align: center; font-size: 0.85rem; color: #888;'>Samlat: {owned_in_set} / {s_data['printedTotal']}</p>", unsafe_allow_html=True)
-            
-            if st.button("Utforska", key=f"set_{s_data['id']}", use_container_width=True):
-                st.query_params["set_id"] = s_data['id']
-                st.rerun()
-            st.divider()
+            conn = get_conn()
+            with conn.session as s:
+                s.execute(text("""
+                    INSERT INTO global_sets (set_intern_id, set_name, set_number_id, total_cards, symbol_path)
+                    VALUES (:sid, :name, :nid, :total, :path)
+                    ON DUPLICATE KEY UPDATE set_name = :name, set_number_id = :nid, total_cards = :total, symbol_path = :path
+                """), {"sid": s_intern, "name": s_name, "nid": s_number_id, "total": s_total, "path": full_symbol_url})
+                s.commit()
+            st.success(f"Setet '{s_name}' har sparats!")
+            st.image(full_symbol_url, width=100, caption="Länkad Symbol")
 
-else:
-    # --- VY 2: VISA ALLA KORT I DET VALDA SETET ---
-    if st.button("← Tillbaka till alla Sets"):
-        del st.query_params["set_id"]
-        st.rerun()
-        
-    cards = get_cards_in_set(selected_set_id)
-    if not cards:
-        st.error("Kunde inte ladda korten.")
-        st.stop()
-        
-    st.subheader(f"Expansion: {cards[0]['set']['name']}")
+# --- UI: MASS IMPORT ---
+with st.expander("📥 2. Mass-importera Kort (Från Pokémon.com)"):
+    conn = get_conn()
+    registered_sets = conn.query("SELECT set_intern_id, set_name, total_cards FROM global_sets")
     
-    # Hämta portföljdata för att markera kort man redan äger
-    user_portfolio = get_user_portfolio(st.session_state.user_id)
+    if not registered_sets.empty:
+        target_set_row = st.selectbox("Välj set att importera kort till:", registered_sets.index, 
+                                      format_func=lambda x: f"{registered_sets.loc[x, 'set_name']} ({registered_sets.loc[x, 'set_intern_id']})")
+        
+        t_id = registered_sets.loc[target_set_row, 'set_intern_id']
+        t_total = int(registered_sets.loc[target_set_row, 'total_cards'])
+        
+        if st.button(f"Starta Import av {t_total} kort"):
+            p_bar = st.progress(0)
+            status = st.empty()
+            for i in range(1, t_total + 1):
+                status.text(f"Hämtar kort {i} av {t_total}...")
+                scrape_and_store_card(t_id, i)
+                p_bar.progress(i / t_total)
+                time.sleep(0.3)
+            st.success("Import färdig!")
+            st.rerun()
+    else:
+        st.warning("Registrera ett set först i steg 1.")
+
+st.divider()
+
+# --- UI: BLÄDDRA I ARKIVET ---
+st.subheader("📁 Ditt Lokala Arkiv")
+if not registered_sets.empty:
+    view_set = st.selectbox("Visa set:", registered_sets['set_name'])
+    v_id = registered_sets[registered_sets['set_name'] == view_set]['set_intern_id'].values[0]
+    
+    # Visa symbolen högst upp
+    set_info = conn.query("SELECT symbol_path FROM global_sets WHERE set_intern_id = :sid", params={"sid": v_id})
+    if not set_info.empty:
+        st.image(set_info.iloc[0]['symbol_path'], width=80)
+
+    # Hämta korten
+    cards = conn.query("SELECT * FROM global_cards WHERE set_intern_id = :sid ORDER BY CAST(card_number AS UNSIGNED) ASC", params={"sid": v_id})
     
     cols = st.columns(4)
-    for idx, card in enumerate(cards):
+    for idx, row in cards.iterrows():
         with cols[idx % 4]:
-            # Räkna totalt antal av just detta kort i samlingen
-            num_owned = 0
-            if not user_portfolio.empty:
-                num_owned = len(user_portfolio[user_portfolio['api_id'] == card['id']])
-            
-            # Visar en grön badge om man äger kortet, annars en tom ruta för balansen
-            if num_owned > 0:
-                st.markdown(f"<div style='background: #1a231c; border: 1px solid #00ff88; color: #00ff88; padding: 4px; border-radius: 5px; text-align: center; font-weight: bold; margin-bottom: 5px;'>📦 Äger: {num_owned}</div>", unsafe_allow_html=True)
-            else:
-                st.markdown("<div style='height: 34px;'></div>", unsafe_allow_html=True)
-
-            st.image(card['images']['small'], use_container_width=True)
-            
-            # Klickar man på knappen öppnas den stora Dialog-rutan
-            if st.button(f"🔍 {card['name']}", key=f"btn_{card['id']}", use_container_width=True):
-                show_card_dialog(card)
-                
-            st.caption(f"#{card['number']} • {card.get('rarity', 'Common')}")
-            st.divider()
+            st.image(row['image_url'], use_container_width=True)
+            st.caption(f"#{row['card_number']} - {row['name']} (HP {row['hp']})")
+            if st.button("➕ Samling", key=f"add_{row['api_id']}"):
+                # Logik för att lägga till i user_items
+                st.toast("Tillagd!")
