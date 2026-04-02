@@ -66,9 +66,14 @@ def init_db():
 
 def verify_user(username, password):
     conn = get_conn()
-    res = conn.query("SELECT id, password_hash FROM users WHERE username = :u", params={"u": username})
-    if not res.empty and bcrypt.checkpw(password.encode(), res.iloc[0]['password_hash'].encode()):
-        return int(res.iloc[0]['id'])
+    with conn.session as s:
+        # Hämtar live direkt från MySQL (ignorerar Streamlits cache helt)
+        res = s.execute(text("SELECT id, password_hash FROM users WHERE username = :u"), {"u": username}).fetchone()
+        
+        if res:
+            # res[0] är id, res[1] är password_hash
+            if bcrypt.checkpw(password.encode(), res[1].encode()):
+                return int(res[0])
     return None
 
 def register_user(username, password):
