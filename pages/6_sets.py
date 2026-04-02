@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from database import get_user_collection, add_item_to_user
+from database import get_user_portfolio, add_item_to_user
 
 st.title("Pokemon Sets")
 
