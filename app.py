@@ -31,6 +31,20 @@ if not st.session_state.logged_in:
         else:
             st.error("Ogiltigt användarnamn eller lösenord.")
     st.stop()
+    
+    # TILLFÄLLIG KNAPP: Radera när databasen är fixad
+    st.divider()
+    if st.button("⚠️ Återställ Databasen (Raderar allt)"):
+        from sqlalchemy import text
+        conn = st.connection("mysql", type="sql")
+        with conn.session as s:
+            s.execute(text("DROP TABLE IF EXISTS portfolio_history"))
+            s.execute(text("DROP TABLE IF EXISTS wishlist"))
+            s.execute(text("DROP TABLE IF EXISTS collection"))
+            s.execute(text("DROP TABLE IF EXISTS users"))
+            s.commit()
+        init_db()
+        st.success("Databas återställd! Uppdatera sidan och skapa en ny användare.")
 
 pg = st.navigation([
     st.Page("pages/1_dashboard.py", title="Home", icon="🏠"),
