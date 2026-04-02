@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_bcrypt import pdkdf2_sha256
+import bcrypt
 from sqlalchemy import text
 import time
 
@@ -227,22 +227,28 @@ def create_booster_item(user_id, set_id, price, status='Sealed'):
 
 def create_user(username, password):
     conn = get_conn()
-    hash_pw = pdkdf2_sha256.hash(password)
+    # Generera salt och hasha lösenordet
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    
     try:
         with conn.session as s:
             s.execute(text("INSERT INTO users (username, password_hash) VALUES (:u, :p)"),
-                      {"u": username, "p": hash_pw})
+                      {"u": username, "p": hashed.decode('utf-8')}) # Spara som string i DB
             s.commit()
         return True
-    except:
-        return False # Användarnamnet upptaget
+    except Exception as e:
+        print(f"Fel vid registrering: {e}")
+        return False
 
 def verify_user(username, password):
     conn = get_conn()
     res = conn.query("SELECT id, password_hash FROM users WHERE username = :u", 
                      params={"u": username})
+    
     if not res.empty:
-        stored_hash = res.iloc[0]['password_hash']
-        if pdkdf2_sha256.verify(password, stored_hash):
+        stored_hash = res.iloc[0]['password_hash'].encode('utf-8')
+        # Jämför det inskickade lösenordet med det lagrade hashet
+        if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
             return res.iloc[0]['id']
     return None
