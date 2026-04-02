@@ -2,27 +2,66 @@ import streamlit as st
 from database import init_db, verify_user, register_user, get_user_id_by_name, get_user_collection, get_user_sealed
 from currency_utils import convert_price
 
-# 1. Konfiguration
+    # 1. Konfiguration
 st.set_page_config(page_title="Collectr Pro", layout="wide", initial_sidebar_state="collapsed")
 
 # 2. Design & PWA
 def load_custom_css():
     st.markdown("""
     <style>
+    /* Dölj Streamlits standardmenyer och footer, men BEHÅLL headern för sidomenyns knapp! */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    
+    /* Dölj istället specifikt "Deploy"-knappen uppe till höger */
+    .stAppDeployButton {display:none;}
+
+    /* Modern kort-design för Metrics (Siffrorna på Dashboarden) */
     [data-testid="metric-container"] {
-        background-color: #1E1E1E; border: 1px solid #333; padding: 20px;
-        border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: transform 0.2s ease;
+        background-color: #1E1E1E;
+        border: 1px solid #333;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        transition: transform 0.2s ease;
     }
-    [data-testid="metric-container"]:hover { transform: translateY(-2px); }
-    .stButton>button { border-radius: 8px; font-weight: bold; transition: all 0.3s ease; }
-    .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 255, 136, 0.2); border-color: #00ff88; color: #00ff88; }
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
-    .stTabs [data-baseweb="tab"] { border-radius: 8px 8px 0 0; padding: 10px 20px; background-color: #161a20; border: 1px solid #333; border-bottom: none; }
-    .stTabs [aria-selected="true"] { background-color: #1e1e1e; border-top: 2px solid #00ff88; }
-    hr { border-top: 1px solid #333; }
+    [data-testid="metric-container"]:hover {
+        transform: translateY(-2px);
+    }
+
+    /* Snyggare knappar med hover-effekt */
+    .stButton>button {
+        border-radius: 8px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 255, 136, 0.2);
+        border-color: #00ff88;
+        color: #00ff88;
+    }
+
+    /* Design för flikar (Tabs) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px 8px 0 0;
+        padding: 10px 20px;
+        background-color: #161a20;
+        border: 1px solid #333;
+        border-bottom: none;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #1e1e1e;
+        border-top: 2px solid #00ff88;
+    }
+    
+    /* Avskiljare */
+    hr {
+        border-top: 1px solid #333;
+    }
     </style>
     """, unsafe_allow_html=True)
 
