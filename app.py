@@ -30,8 +30,7 @@ if not st.session_state.logged_in:
             st.rerun()
         else:
             st.error("Ogiltigt användarnamn eller lösenord.")
-    st.stop()
-    
+
     # TILLFÄLLIG KNAPP: Radera när databasen är fixad
     st.divider()
     if st.button("⚠️ Återställ Databasen (Raderar allt)"):
@@ -45,6 +44,8 @@ if not st.session_state.logged_in:
             s.commit()
         init_db()
         st.success("Databas återställd! Uppdatera sidan och skapa en ny användare.")
+
+    st.stop()
 
 pg = st.navigation([
     st.Page("pages/1_dashboard.py", title="Home", icon="🏠"),
