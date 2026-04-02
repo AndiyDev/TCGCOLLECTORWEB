@@ -15,12 +15,13 @@ if not w_df.empty:
     if not alerts.empty:
         st.error(f"🔔 {len(alerts)} kort på din önskelista har nått ditt målpris!")
 
-# --- Totalvärde & ROI ---
-res_cards = conn.query("SELECT SUM(market_value * quantity) as v, SUM(purchase_price * quantity) as c FROM collection WHERE user_id = :u", params={"u": uid})
-res_sealed = conn.query("SELECT SUM(market_value * quantity) as v, SUM(purchase_price * quantity) as c FROM sealed_collection WHERE user_id = :u", params={"u": uid})
+# --- Totalvärde & ROI (Inkluderar nu både kort och oöppnade produkter) ---
+res_cards = conn.query("SELECT SUM(market_value * quantity) as v, SUM(purchase_price * quantity) as c FROM collection WHERE user_id = :u", params={"u": uid}, ttl=0)
+res_sealed = conn.query("SELECT SUM(market_value * quantity) as v, SUM(purchase_price * quantity) as c FROM sealed_collection WHERE user_id = :u", params={"u": uid}, ttl=0)
 
-total_val = (res_cards.iloc[0]['v'] or 0) + (res_sealed.iloc[0]['v'] or 0)
-total_cost = (res_cards.iloc[0]['c'] or 0) + (res_sealed.iloc[0]['c'] or 0)
+# FIX: Ser till att variablerna heter rätt!
+total_value = float(res_cards.iloc[0]['v'] or 0.0) + float(res_sealed.iloc[0]['v'] or 0.0)
+total_cost = float(res_cards.iloc[0]['c'] or 0.0) + float(res_sealed.iloc[0]['c'] or 0.0)
 
 total_value_curr = convert_price(total_value, currency)
 total_cost_curr = convert_price(total_cost, currency)
@@ -41,8 +42,8 @@ if not hist.empty:
 
 # Most Valuable
 st.write("### Most Valuable Cards")
-top = conn.query("SELECT item_name, market_value, variant, grade_company, grade_value FROM collection WHERE user_id = :u ORDER BY market_value DESC LIMIT 5", params={"u": uid})
+top = conn.query("SELECT item_name, market_value, variant, grade_company, grade_value FROM collection WHERE user_id = :u ORDER BY market_value DESC LIMIT 5", params={"u": uid}, ttl=0)
 for _, r in top.iterrows():
-    grade_info = f" • {r['grade_company']} {r['grade_value']}" if r['grade_company'] else ""
+    grade_info = f" • {r['grade_company']} {r['grade_value']}" if r.get('grade_company') else ""
     local_val = convert_price(r['market_value'], currency)
     st.markdown(f"**{r['item_name']}** <span style='float:right;'>{local_val:,.2f} {currency}</span><br><small>{r['variant']}{grade_info}</small>", unsafe_allow_html=True)
