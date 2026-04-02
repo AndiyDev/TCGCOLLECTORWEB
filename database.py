@@ -100,7 +100,8 @@ def register_user(username, password):
 
 def get_user_collection(uid):
     conn = get_conn()
-    return conn.query("SELECT * FROM collection WHERE user_id = :uid", params={"uid": uid})
+    # ttl=0 tvingar Streamlit att strunta i cachen och alltid hämta live från MySQL
+    return conn.query("SELECT * FROM collection WHERE user_id = :uid", params={"uid": uid}, ttl=0)
 
 # UPPDATERAD: Tar nu in inköpspris och graderingsinfo
 def add_to_collection(uid, api_id, name, set_c, num, val, img, var="Normal", qty=1, p_price=0.0, is_graded=False, g_comp=None, g_val=None, cert=None):
@@ -144,11 +145,11 @@ def update_quantity(uid, api_id, var, change):
 
 def get_portfolio_history(uid):
     conn = get_conn()
-    return conn.query("SELECT recorded_date, total_value FROM portfolio_history WHERE user_id = :uid ORDER BY recorded_date", params={"uid": uid})
+    return conn.query("SELECT recorded_date, total_value FROM portfolio_history WHERE user_id = :uid ORDER BY recorded_date", params={"uid": uid}, ttl=0)
     
 def get_wishlist(uid):
     conn = get_conn()
-    return conn.query("SELECT * FROM wishlist WHERE user_id = :uid", params={"uid": uid})
+    return conn.query("SELECT * FROM wishlist WHERE user_id = :uid", params={"uid": uid}, ttl=0)
 
 def add_to_wishlist(uid, name, set_code, card_num, target, current, img):
     conn = get_conn()
