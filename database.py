@@ -121,3 +121,17 @@ def add_sealed_product(uid, name, p_type, qty, p_price, m_val, img):
 def get_user_sealed(uid):
     conn = get_conn()
     return conn.query("SELECT * FROM sealed_collection WHERE user_id = :uid", params={"uid": uid}, ttl=0)
+
+def get_portfolio_history(uid):
+    conn = get_conn()
+    return conn.query("SELECT recorded_date, total_value FROM portfolio_history WHERE user_id = :uid ORDER BY recorded_date ASC", params={"uid": uid}, ttl=0)
+
+def get_wishlist(uid):
+    conn = get_conn()
+    return conn.query("SELECT * FROM wishlist WHERE user_id = :uid", params={"uid": uid}, ttl=0)
+
+def delete_from_wishlist(item_id, uid):
+    conn = get_conn()
+    with conn.session as s:
+        s.execute(text("DELETE FROM wishlist WHERE id = :id AND user_id = :uid"), {"id": item_id, "uid": uid})
+        s.commit()
