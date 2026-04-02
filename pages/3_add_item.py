@@ -6,10 +6,15 @@ st.title("Search Products")
 query = st.text_input("Search name or set...", placeholder="e.g. Charizard")
 
 if query:
-    api_url = f"https://api.pokemontcg.io/v2/cards?q=name:*{query}* OR set.name:*{query}*&orderBy=-set.releaseDate&pageSize=10"
+    # Vi skickar parametrarna som ett lexikon (dict). Python löser då URL-kodningen automatiskt!
+    params = {
+        "q": f'name:"{query}" OR set.name:"{query}"',
+        "orderBy": "-set.releaseDate",
+        "pageSize": 10
+    }
     
-    # Den här raden saknades! Det är den som faktiskt hämtar datan.
-    res = requests.get(api_url)
+    # Gör anropet med de säkra parametrarna
+    res = requests.get("https://api.pokemontcg.io/v2/cards", params=params)
     
     if res.status_code == 200:
         data = res.json().get('data', [])
@@ -33,4 +38,6 @@ if query:
                     add_to_collection(st.session_state.user_id, card['id'], card['name'], card['set']['id'], card['number'], price * 1.2, card['images']['small'], "Reverse Holofoil")
                     st.toast(f"{card['name']} (Reverse Holo) tillagd!")
     else:
-        st.error("Kunde inte nå API:et.")
+        # Nu skriver appen ut EXAKT varför API:et gnäller om det misslyckas
+        st.error(f"Kunde inte nå API:et. Felkod: {res.status_code}")
+        st.code(res.text)
