@@ -127,11 +127,11 @@ load_custom_css()
 setup_pwa()
 
 # 3. Initiera databas
+# I app.py
 try:
     init_db()
 except Exception as e:
-    st.error(f"Databasfel: {e}")
-    st.stop()
+    st.error(f"Databasfel vid uppstart: {e}")
 
 # --- NY KOD: KONTROLLERA OM DET ÄR EN DELNINGSLÄNK (PUBLIC MODE) ---
 target_user = st.query_params.get("user")
@@ -200,27 +200,22 @@ for k, v in defaults.items():
 def login_screen():
     st.title("Collectr Pro")
 
-    # --- TEMPORÄR ÅTERSTÄLLNINGSKNAPP (Ta bort efter användning) ---
-    with st.expander("🛠️ Systeminställningar (Utvecklare)"):
-        if st.button("🚨 RADERA ALL DATA OCH UPPDATERA TILL 3.0"):
-            from sqlalchemy import text
-            conn = st.connection("mysql", type="sql")
-            with conn.session as s:
-                # Vi raderar i rätt ordning för att inte krocka med "Foreign Keys"
-                s.execute(text("DROP TABLE IF EXISTS portfolio_history"))
-                s.execute(text("DROP TABLE IF EXISTS wishlist"))
-                s.execute(text("DROP TABLE IF EXISTS user_items")) # Ny tabell
-                s.execute(text("DROP TABLE IF EXISTS collection"))  # Gammal tabell
-                s.execute(text("DROP TABLE IF EXISTS sealed_collection"))
-                s.execute(text("DROP TABLE IF EXISTS global_cards")) # Ny katalog
-                s.execute(text("DROP TABLE IF EXISTS users"))
-                s.commit()
-            
-            from database import init_db
-            init_db()
-            st.success("Databasen är rensad och uppgraderad till Version 3.0! Ladda om sidan (F5).")
-    st.divider()
-    # -------------------------------------------------------------
+    st.warning("Om appen kraschar, använd knappen nedan för att bygga om databasen till v3.0")
+    if st.button("🚨 FIXA DATABAS (FORCE RESET)"):
+        from sqlalchemy import text
+        conn = st.connection("mysql", type="sql")
+        with conn.session as s:
+            # Vi rensar allt gammalt skräp
+            tables = ["portfolio_history", "wishlist", "user_items", "collection", "sealed_collection", "global_cards", "users"]
+            for table in tables:
+                s.execute(text(f"DROP TABLE IF EXISTS {table}"))
+            s.commit()
+        
+        # Nu skapar vi de nya fräscha tabellerna
+        from database import init_db
+        init_db()
+        st.success("Databas återställd! Ladda om sidan nu.")
+        st.stop() # Stoppar körningen så du kan ladda om
 
     tab_login, tab_register = st.tabs(["Logga in", "Skapa konto"])
     
