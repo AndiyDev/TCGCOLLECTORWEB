@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from database import get_user_collection, add_to_collection
+from database import get_user_collection, add_item_to_user
 
 st.title("Pokemon Sets")
 
@@ -93,16 +93,7 @@ else:
                 # Justera priset lite om det är Holo/Reverse för att det ska bli mer realistiskt innan sync
                 final_price = price * 1.2 if "Holo" in sel_var else price
                 
-                add_to_collection(
-                    uid=st.session_state.user_id, 
-                    api_id=card['id'], 
-                    name=card['name'], 
-                    set_c=card['set']['id'], 
-                    num=card['number'], 
-                    val=final_price, 
-                    img=card['images']['small'], 
-                    var=sel_var # Skickar in den valda varianten!
-                )
+                add_item_to_user(st.session_state.user_id, card, var_sel, p_price)
                 st.toast(f"{card['name']} ({sel_var}) tillagd!")
                 st.rerun() 
             st.divider()
