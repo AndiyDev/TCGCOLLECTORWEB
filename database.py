@@ -37,6 +37,20 @@ def init_db():
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
             """))
+            
+            # --- Smarta kolumn-uppdateringar (Körs utan att krascha om de redan finns) ---
+            alter_queries = [
+                "ALTER TABLE collection ADD COLUMN grade_company VARCHAR(50)",
+                "ALTER TABLE collection ADD COLUMN grade_value VARCHAR(10)",
+                "ALTER TABLE collection ADD COLUMN cert_number VARCHAR(100)"
+            ]
+            for q in alter_queries:
+                try:
+                    s.execute(text(q))
+                    s.commit()
+                except Exception:
+                    pass
+
             s.execute(text("""
                 CREATE TABLE IF NOT EXISTS portfolio_history (
                     id INT AUTO_INCREMENT PRIMARY KEY, 
@@ -67,18 +81,14 @@ def init_db():
 def verify_user(username, password):
     conn = get_conn()
     with conn.session as s:
-        # Hämtar live direkt från MySQL (ignorerar Streamlits cache helt)
         res = s.execute(text("SELECT id, password_hash FROM users WHERE username = :u"), {"u": username}).fetchone()
-        
         if res:
-            # res[0] är id, res[1] är password_hash
             if bcrypt.checkpw(password.encode(), res[1].encode()):
                 return int(res[0])
     return None
 
 def register_user(username, password):
     conn = get_conn()
-    # Skapa en säker hash av lösenordet
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     with conn.session as s:
         try:
@@ -86,21 +96,28 @@ def register_user(username, password):
             s.commit()
             return True
         except Exception:
-            # Om det kraschar är det troligtvis för att användarnamnet (UNIQUE) redan finns
             return False
 
 def get_user_collection(uid):
     conn = get_conn()
     return conn.query("SELECT * FROM collection WHERE user_id = :uid", params={"uid": uid})
 
-def add_to_collection(uid, api_id, name, set_c, num, val, img, var="Normal", qty=1):
+# UPPDATERAD: Tar nu in inköpspris och graderingsinfo
+def add_to_collection(uid, api_id, name, set_c, num, val, img, var="Normal", qty=1, p_price=0.0, is_graded=False, g_comp=None, g_val=None, cert=None):
     conn = get_conn()
     with conn.session as s:
-        s.execute(text('''
-            INSERT INTO collection (user_id, api_id, item_name, set_code, card_number, market_value, image_url, variant, quantity)
-            VALUES (:uid, :aid, :n, :sc, :num, :val, :img, :var, :q)
-            ON DUPLICATE KEY UPDATE quantity = quantity + :q
-        '''), {"uid": uid, "aid": api_id, "n": name, "sc": set_c, "num": num, "val": val, "img": img, "var": var, "q": qty})
+        # Om det är ett graderat kort, skapa alltid en ny rad (ignorera DUPLICATE KEY)
+        if is_graded:
+            s.execute(text('''
+                INSERT INTO collection (user_id, api_id, item_name, set_code, card_number, market_value, purchase_price, image_url, variant, quantity, is_graded, grade_company, grade_value, cert_number)
+                VALUES (:uid, :aid, :n, :sc, :num, :val, :pp, :img, :var, :q, :ig, :gc, :gv, :cert)
+            '''), {"uid": uid, "aid": api_id, "n": name, "sc": set_c, "num": num, "val": val, "pp": p_price, "img": img, "var": var, "q": qty, "ig": True, "gc": g_comp, "gv": g_val, "cert": cert})
+        else:
+            s.execute(text('''
+                INSERT INTO collection (user_id, api_id, item_name, set_code, card_number, market_value, purchase_price, image_url, variant, quantity, is_graded)
+                VALUES (:uid, :aid, :n, :sc, :num, :val, :pp, :img, :var, :q, FALSE)
+                ON DUPLICATE KEY UPDATE quantity = quantity + :q, purchase_price = purchase_price + :pp
+            '''), {"uid": uid, "aid": api_id, "n": name, "sc": set_c, "num": num, "val": val, "pp": p_price, "img": img, "var": var, "q": qty})
         s.commit()
 
 def delete_from_collection(cid, uid):
@@ -114,7 +131,7 @@ def update_quantity(uid, api_id, var, change):
     with conn.session as s:
         res = s.execute(text('''
             SELECT id, quantity FROM collection 
-            WHERE user_id = :u AND api_id = :aid AND variant = :v LIMIT 1
+            WHERE user_id = :u AND api_id = :aid AND variant = :v AND is_graded = FALSE LIMIT 1
         '''), {"u": uid, "aid": api_id, "v": var}).fetchone()
         
         if res:

@@ -1,6 +1,7 @@
 import streamlit as st
-from database import get_conn
+from database import get_conn, get_user_collection
 from sqlalchemy import text
+import pandas as pd
 
 st.title("Profile & Settings")
 
@@ -12,6 +13,25 @@ if new_currency != st.session_state.currency:
     st.session_state.currency = new_currency
     st.success(f"Valuta ändrad till {new_currency}.")
     st.rerun()
+
+st.divider()
+
+# --- CSV EXPORT ---
+st.subheader("Data Management")
+st.write("Exportera hela din portfölj till en CSV-fil (kan öppnas i Excel).")
+
+df = get_user_collection(st.session_state.user_id)
+if not df.empty:
+    # Formatera CSV-datan
+    csv_data = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Ladda ner Samling (CSV)",
+        data=csv_data,
+        file_name='min_pokemon_samling.csv',
+        mime='text/csv',
+    )
+else:
+    st.info("Din samling är tom, inget att exportera.")
 
 st.divider()
 

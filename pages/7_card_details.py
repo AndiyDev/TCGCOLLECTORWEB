@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
-from database import update_quantity, add_to_collection
+from database import update_quantity, add_to_collection, get_user_collection
 from currency_utils import convert_price
 
 card_id = st.query_params.get("card_id")
@@ -52,6 +52,34 @@ with c2:
         st.link_button("eBay", f"https://www.ebay.com/sch/i.html?_nkw={search_q}", use_container_width=True)
 
     st.divider()
+
+    # --- LÄGG TILL KORT (Raw & Graded) ---
+    st.write("### Add to Collection")
+    tab_raw, tab_graded = st.tabs(["Raw (Ograderad)", "Graded (PSA/BGS/CGC)"])
+    
+    with tab_raw:
+        var_sel = st.selectbox("Variant", ["Normal", "Reverse Holofoil", "Holofoil"], key="raw_var")
+        p_price = st.number_input(f"Inköpspris (Valfritt) i {st.session_state.currency}", min_value=0.0, format="%.2f", key="raw_price")
+        
+        if st.button("➕ Lägg till i samling", key="btn_raw"):
+            # Konvertera inköpspris tillbaka till basvalutan (EUR/USD beroende på system) vid sparande, eller spara direkt. 
+            # För enkelhetens skull sparar vi inköpspriset direkt som input nu.
+            price_mult = 1.2 if "Holo" in var_sel else 1.0
+            add_to_collection(st.session_state.user_id, card_id, card['name'], card['set']['id'], card['number'], base_price * price_mult, card['images']['small'], var_sel, 1, p_price)
+            st.success("Tillagd i samlingen!")
+            
+    with tab_graded:
+        g_comp = st.selectbox("Företag", ["PSA", "BGS", "CGC", "SGC"], key="g_comp")
+        g_val = st.selectbox("Betyg (Grade)", ["10", "9.5", "9", "8", "7", "6", "5", "4", "3", "2", "1"], key="g_val")
+        cert_num = st.text_input("Certifikatnummer (Valfritt)", key="g_cert")
+        p_price_g = st.number_input(f"Inköpspris i {st.session_state.currency}", min_value=0.0, format="%.2f", key="g_price")
+        
+        # Graderade kort är ofta värda 2-10x mer än ograderade. Låt användaren justera marknadsvärdet.
+        est_val = st.number_input("Estimerat Marknadsvärde (API visar bara raw)", value=float(local_price*3), format="%.2f", key="g_est")
+        
+        if st.button("➕ Lägg till Graderat Kort", key="btn_graded"):
+            add_to_collection(st.session_state.user_id, card_id, card['name'], card['set']['id'], card['number'], est_val, card['images']['small'], "Normal", 1, p_price_g, True, g_comp, g_val, cert_num)
+            st.success("Graderat kort tillagt!")
 
     st.divider()
     st.write("### Manage Quantity")
