@@ -7,48 +7,125 @@ from datetime import date
 def get_conn():
     return st.connection("mysql", type="sql")
 
-    def init_db():
-        conn = get_conn()
-            with conn.session as s:
-                    # Användare
-                            s.execute(text("CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255) UNIQUE, password_hash VARCHAR(255))"))
-                                    # Samling
-                                            s.execute(text('''
-                                                        CREATE TABLE IF NOT EXISTS collection (
-                                                                        id INT AUTO_INCREMENT PRIMARY KEY,
-                                                                                        user_id INT,
-                                                                                                        api_id VARCHAR(100),
-                                                                                                                        item_name VARCHAR(255),
-                                                                                                                                        set_code VARCHAR(50),
-                                                                                                                                                        card_number VARCHAR(50),
-                                                                                                                                                                        variant VARCHAR(50) DEFAULT 'Normal',
-                                                                                                                                                                                        card_condition VARCHAR(20) DEFAULT 'NM',
-                                                                                                                                                                                                        quantity INT DEFAULT 1,
-                                                                                                                                                                                                                        market_value DECIMAL(10, 2),
-                                                                                                                                                                                                                                        purchase_price DECIMAL(10, 2),
-                                                                                                                                                                                                                                                        image_url VARCHAR(500),
-                                                                                                                                                                                                                                                                        is_graded BOOLEAN DEFAULT FALSE,
-                                                                                                                                                                                                                                                                                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                                                                                                                                                                                                                                                                                                    )
-                                                                                                                                                                                                                                                                                                            '''))
-                                                                                                                                                                                                                                                                                                                    # Historik
-                                                                                                                                                                                                                                                                                                                            s.execute(text("CREATE TABLE IF NOT EXISTS portfolio_history (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, recorded_date DATE, total_value DECIMAL(10, 2), UNIQUE KEY (user_id, recorded_date))"))
-                                                                                                                                                                                                                                                                                                                                    s.commit()
+def init_db():
+    conn = get_conn()
+    with conn.session as s:
+        try:
+            s.execute(text("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INT AUTO_INCREMENT PRIMARY KEY, 
+                    username VARCHAR(255) UNIQUE, 
+                    password_hash VARCHAR(255)
+                )
+            """))
+            s.execute(text("""
+                CREATE TABLE IF NOT EXISTS collection (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT,
+                    api_id VARCHAR(100),
+                    item_name VARCHAR(255),
+                    set_code VARCHAR(50),
+                    card_number VARCHAR(50),
+                    variant VARCHAR(50) DEFAULT 'Normal',
+                    card_condition VARCHAR(20) DEFAULT 'NM',
+                    quantity INT DEFAULT 1,
+                    market_value DECIMAL(10, 2) DEFAULT 0.00,
+                    purchase_price DECIMAL(10, 2) DEFAULT 0.00,
+                    image_url VARCHAR(500),
+                    is_graded BOOLEAN DEFAULT FALSE,
+                    UNIQUE KEY unique_card (user_id, api_id, variant, is_graded),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """))
+            s.execute(text("""
+                CREATE TABLE IF NOT EXISTS portfolio_history (
+                    id INT AUTO_INCREMENT PRIMARY KEY, 
+                    user_id INT, 
+                    recorded_date DATE, 
+                    total_value DECIMAL(10, 2), 
+                    UNIQUE KEY unique_history (user_id, recorded_date),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """))
+            s.execute(text("""
+                CREATE TABLE IF NOT EXISTS wishlist (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    item_name VARCHAR(255) NOT NULL,
+                    set_code VARCHAR(50),
+                    card_number VARCHAR(50),
+                    target_price DECIMAL(10, 2),
+                    current_price DECIMAL(10, 2),
+                    image_url VARCHAR(500),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """))
+            s.commit()
+        except Exception as e:
+            logging.error(f"Databas initieringsfel: {e}")
 
-                                                                                                                                                                                                                                                                                                                                    def verify_user(u, p):
-                                                                                                                                                                                                                                                                                                                                        conn = get_conn()
-                                                                                                                                                                                                                                                                                                                                            res = conn.query("SELECT id, password_hash FROM users WHERE username = :u", params={"u": u})
-                                                                                                                                                                                                                                                                                                                                                if not res.empty and bcrypt.checkpw(p.encode(), res.iloc[0]['password_hash'].encode()):
-                                                                                                                                                                                                                                                                                                                                                        return res.iloc[0]['id']
-                                                                                                                                                                                                                                                                                                                                                            return None
+def verify_user(username, password):
+    conn = get_conn()
+    res = conn.query("SELECT id, password_hash FROM users WHERE username = :u", params={"u": username})
+    if not res.empty and bcrypt.checkpw(password.encode(), res.iloc[0]['password_hash'].encode()):
+        return int(res.iloc[0]['id'])
+    return None
 
-                                                                                                                                                                                                                                                                                                                                                            def add_to_collection(uid, api_id, name, set_c, num, val, img, var="Normal", qty=1):
-                                                                                                                                                                                                                                                                                                                                                                conn = get_conn()
-                                                                                                                                                                                                                                                                                                                                                                    with conn.session as s:
-                                                                                                                                                                                                                                                                                                                                                                            s.execute(text('''
-                                                                                                                                                                                                                                                                                                                                                                                        INSERT INTO collection (user_id, api_id, item_name, set_code, card_number, market_value, image_url, variant, quantity)
-                                                                                                                                                                                                                                                                                                                                                                                                    VALUES (:uid, :aid, :n, :s, :num, :v, :img, :var, :q)
-                                                                                                                                                                                                                                                                                                                                                                                                                ON DUPLICATE KEY UPDATE quantity = quantity + :q
-                                                                                                                                                                                                                                                                                                                                                                                                                        '''), {"uid": uid, "aid": api_id, "n": name, "s": set_c, "num": num, "v": val, "img": img, "var": var, "q": qty})
-                                                                                                                                                                                                                                                                                                                                                                                                                                s.commit()
-                                                                                                                                                                                                                                                                                                                                                                                                                                
+def get_user_collection(uid):
+    conn = get_conn()
+    return conn.query("SELECT * FROM collection WHERE user_id = :uid", params={"uid": uid})
+
+def add_to_collection(uid, api_id, name, set_c, num, val, img, var="Normal", qty=1):
+    conn = get_conn()
+    with conn.session as s:
+        s.execute(text('''
+            INSERT INTO collection (user_id, api_id, item_name, set_code, card_number, market_value, image_url, variant, quantity)
+            VALUES (:uid, :aid, :n, :sc, :num, :val, :img, :var, :q)
+            ON DUPLICATE KEY UPDATE quantity = quantity + :q
+        '''), {"uid": uid, "aid": api_id, "n": name, "sc": set_c, "num": num, "val": val, "img": img, "var": var, "q": qty})
+        s.commit()
+
+def delete_from_collection(cid, uid):
+    conn = get_conn()
+    with conn.session as s:
+        s.execute(text("DELETE FROM collection WHERE id = :id AND user_id = :uid"), {"id": cid, "uid": uid})
+        s.commit()
+
+def update_quantity(uid, api_id, var, change):
+    conn = get_conn()
+    with conn.session as s:
+        res = s.execute(text('''
+            SELECT id, quantity FROM collection 
+            WHERE user_id = :u AND api_id = :aid AND variant = :v LIMIT 1
+        '''), {"u": uid, "aid": api_id, "v": var}).fetchone()
+        
+        if res:
+            new_qty = max(0, res[1] + change)
+            if new_qty == 0:
+                s.execute(text("DELETE FROM collection WHERE id = :id"), {"id": res[0]})
+            else:
+                s.execute(text("UPDATE collection SET quantity = :q WHERE id = :id"), {"q": new_qty, "id": res[0]})
+            s.commit()
+
+def get_portfolio_history(uid):
+    conn = get_conn()
+    return conn.query("SELECT recorded_date, total_value FROM portfolio_history WHERE user_id = :uid ORDER BY recorded_date", params={"uid": uid})
+    
+def get_wishlist(uid):
+    conn = get_conn()
+    return conn.query("SELECT * FROM wishlist WHERE user_id = :uid", params={"uid": uid})
+
+def add_to_wishlist(uid, name, set_code, card_num, target, current, img):
+    conn = get_conn()
+    with conn.session as s:
+        s.execute(text('''
+            INSERT INTO wishlist (user_id, item_name, set_code, card_number, target_price, current_price, image_url)
+            VALUES (:uid, :n, :sc, :c, :t, :curr, :img)
+        '''), {"uid": uid, "n": name, "sc": set_code, "c": card_num, "t": target, "curr": current, "img": img})
+        s.commit()
+
+def delete_from_wishlist(wid, uid):
+    conn = get_conn()
+    with conn.session as s:
+        s.execute(text("DELETE FROM wishlist WHERE id = :id AND user_id = :uid"), {"id": wid, "uid": uid})
+        s.commit()
