@@ -7,9 +7,16 @@ query = st.text_input("Search name or set...", placeholder="e.g. Charizard")
 
 if query:
     api_url = f"https://api.pokemontcg.io/v2/cards?q=name:*{query}* OR set.name:*{query}*&orderBy=-set.releaseDate&pageSize=10"
+    
+    # Den här raden saknades! Det är den som faktiskt hämtar datan.
+    res = requests.get(api_url)
+    
     if res.status_code == 200:
         data = res.json().get('data', [])
         
+        if not data:
+            st.warning("Inga kort hittades. Testa en annan sökning.")
+            
         cols = st.columns(2)
         for i, card in enumerate(data):
             with cols[i % 2]:
