@@ -16,6 +16,14 @@ if new_currency != st.session_state.currency:
 
 st.divider()
 
+# --- OFFENTLIG DELNING ---
+st.subheader("🌐 Offentlig Delning")
+st.write("Skicka denna länk till vänner för att visa din samling (skrivskyddat läge).")
+# Bygger länken dynamiskt
+share_url = f"/?user={st.session_state.username}"
+st.code(share_url, language="text")
+st.caption("Exempel: Lägg till detta i slutet av din webbadress (t.ex. www.din-sida.se/?user=dittnamn)")
+
 # --- CSV EXPORT ---
 st.subheader("Data Management")
 st.write("Exportera hela din portfölj till en CSV-fil (kan öppnas i Excel).")

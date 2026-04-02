@@ -198,3 +198,11 @@ def delete_sealed(sid, uid):
     with conn.session as s:
         s.execute(text("DELETE FROM sealed_collection WHERE id = :id AND user_id = :uid"), {"id": sid, "uid": uid})
         s.commit()
+
+def get_user_id_by_name(username):
+    conn = get_conn()
+    with conn.session as s:
+        res = s.execute(text("SELECT id FROM users WHERE username = :u"), {"u": username}).fetchone()
+        if res:
+            return int(res[0])
+    return None
