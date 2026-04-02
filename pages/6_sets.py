@@ -19,7 +19,7 @@ selected_set = st.query_params.get("set_id")
 if not selected_set:
     # --- VY 1: VISA ALLA SETS (LOGOTYPER) ---
     all_sets = get_all_sets()
-    user_df = get_user_collection(st.session_state.user_id)
+    user_df = get_user_portfolio(st.session_state.user_id)
     
     if not all_sets:
         st.error("Kunde inte ladda sets.")
@@ -61,7 +61,7 @@ else:
     st.subheader(f"Utforskar: {cards[0]['set']['name']}")
     st.divider()
     
-    user_df = get_user_collection(st.session_state.user_id)
+    user_df = get_user_portfolio(st.session_state.user_id)
     
     cols = st.columns(4)
     for idx, card in enumerate(cards):
