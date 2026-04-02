@@ -62,6 +62,48 @@ def load_custom_css():
     hr {
         border-top: 1px solid #333;
     }
+
+    /* --- HOLO & REVERSE HOLO EFFEKTER --- */
+    .card-wrapper {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+        border-radius: 8px; /* Avrundade hörn för kort */
+        overflow: hidden;
+    }
+    
+    .card-wrapper img {
+        width: 100%;
+        display: block;
+    }
+
+    /* Standard blänk för Holofoil */
+    .holo-overlay {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: linear-gradient(125deg, rgba(255,255,255,0) 30%, rgba(255,255,255,0.4) 40%, rgba(255,255,255,0) 50%);
+        background-size: 200% 200%;
+        animation: shimmer 3s infinite linear;
+        pointer-events: none; /* Gör så att man kan klicka "genom" blänket */
+        mix-blend-mode: color-dodge;
+    }
+
+    /* Regnbågsblänk för Reverse Holofoil */
+    .reverse-holo-overlay {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: linear-gradient(125deg, rgba(255,0,0,0.2) 0%, rgba(255,154,0,0.2) 10%, rgba(208,222,33,0.2) 20%, rgba(79,220,74,0.2) 30%, rgba(63,218,216,0.2) 40%, rgba(47,201,226,0.2) 50%, rgba(28,127,238,0.2) 60%, rgba(95,21,242,0.2) 70%, rgba(186,12,248,0.2) 80%, rgba(251,7,217,0.2) 90%, rgba(255,0,0,0.2) 100%);
+        background-size: 300% 300%;
+        animation: shimmer 4s infinite linear;
+        pointer-events: none;
+        mix-blend-mode: overlay;
+        opacity: 0.6;
+    }
+
+    @keyframes shimmer {
+        0% { background-position: 100% 100%; }
+        100% { background-position: 0% 0%; }
+    }
     </style>
     """, unsafe_allow_html=True)
 

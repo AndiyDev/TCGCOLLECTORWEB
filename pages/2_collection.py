@@ -54,7 +54,29 @@ if not df.empty:
         for idx, row in page_df.reset_index(drop=True).iterrows():
             with cols[idx % 4]:
                 # Streamlit-uppdatering: width="stretch"
-                st.image(row['image_url'], width="stretch")
+                # -- KONTROLLERA HOLO/REVERSE HOLO --
+                variant = row.get('variant', 'Normal')
+                
+                if "Reverse Holo" in variant:
+                    # Visa kortet med regnbågs-filter
+                    st.markdown(f"""
+                    <div class="card-wrapper">
+                        <img src="{row['image_url']}">
+                        <div class="reverse-holo-overlay"></div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                elif "Holo" in variant:
+                    # Visa kortet med standard-blänk
+                    st.markdown(f"""
+                    <div class="card-wrapper">
+                        <img src="{row['image_url']}">
+                        <div class="holo-overlay"></div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    # Visa vanligt kort utan effekter
+                    st.image(row['image_url'], width="stretch")
+                    
                 st.markdown(f"**{row['item_name']}**")
                 price = convert_price(row['market_value'], currency)
                 st.write(f"**{price:,.2f} {currency}**")

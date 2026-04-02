@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
-import pandas as pd
-from database import update_quantity, add_to_collection, get_user_collection
+from database import add_to_collection
 from currency_utils import convert_price
 
 card_id = st.query_params.get("card_id")
@@ -25,8 +24,7 @@ if st.button("← Back to Portfolio"):
     st.switch_page("pages/2_collection.py")
 
 c1, c2 = st.columns([1, 1])
-with c1:
-    st.image(card['images']['large'], width="stretch")
+
 with c2:
     st.title(card['name'])
     st.caption(f"{card['set']['name']} • {card['number']}")
@@ -35,24 +33,21 @@ with c2:
     local_price = convert_price(base_price, st.session_state.currency)
     st.subheader(f"{local_price:,.2f} {st.session_state.currency}")
 
-    # --- Smarta Marknadsplatslänkar (Din logik) ---
-    st.write("🔍 **Sök på marknadsplatser:**")
-    
-    # Bygg söksträngar
+    # --- Länkar ---
     raw_search = f"{card['name']} {card['set']['name']} {card['number']}"
     search_q = raw_search.replace(" ", "+")
     cm_search = card['name'].replace(' ', '+')
     
     col_links1, col_links2, col_links3 = st.columns(3)
     with col_links1:
-        st.link_button("Cardmarket", f"https://www.cardmarket.com/en/Pokemon/Products/Search?searchString={cm_search}", width="stretch")
+        st.link_button("Cardmarket", f"https://www.cardmarket.com/en/Pokemon/Products/Search?searchString={cm_search}", use_container_width=True)
     with col_links2:
-        st.link_button("Tradera", f"https://www.tradera.com/search?q={search_q}", width="stretch")
+        st.link_button("Tradera", f"https://www.tradera.com/search?q={search_q}", use_container_width=True)
     with col_links3:
-        st.link_button("eBay", f"https://www.ebay.com/sch/i.html?_nkw={search_q}", width="stretch")
+        st.link_button("eBay", f"https://www.ebay.com/sch/i.html?_nkw={search_q}", use_container_width=True)
 
     st.divider()
-
+    
     # --- LÄGG TILL KORT (Raw & Graded) ---
     st.write("### Add to Collection")
     tab_raw, tab_graded = st.tabs(["Raw (Ograderad)", "Graded (PSA/BGS/CGC)"])
@@ -62,11 +57,9 @@ with c2:
         p_price = st.number_input(f"Inköpspris (Valfritt) i {st.session_state.currency}", min_value=0.0, format="%.2f", key="raw_price")
         
         if st.button("➕ Lägg till i samling", key="btn_raw"):
-            # Konvertera inköpspris tillbaka till basvalutan (EUR/USD beroende på system) vid sparande, eller spara direkt. 
-            # För enkelhetens skull sparar vi inköpspriset direkt som input nu.
             price_mult = 1.2 if "Holo" in var_sel else 1.0
             add_to_collection(st.session_state.user_id, card_id, card['name'], card['set']['id'], card['number'], base_price * price_mult, card['images']['small'], var_sel, 1, p_price)
-            st.success("Tillagd i samlingen!")
+            st.success(f"Tillagd i samlingen som {var_sel}!")
             
     with tab_graded:
         g_comp = st.selectbox("Företag", ["PSA", "BGS", "CGC", "SGC"], key="g_comp")
@@ -74,32 +67,31 @@ with c2:
         cert_num = st.text_input("Certifikatnummer (Valfritt)", key="g_cert")
         p_price_g = st.number_input(f"Inköpspris i {st.session_state.currency}", min_value=0.0, format="%.2f", key="g_price")
         
-        # Graderade kort är ofta värda 2-10x mer än ograderade. Låt användaren justera marknadsvärdet.
-        est_val = st.number_input("Estimerat Marknadsvärde (API visar bara raw)", value=float(local_price*3), format="%.2f", key="g_est")
+        est_val = st.number_input("Estimerat Marknadsvärde", value=float(local_price*3), format="%.2f", key="g_est")
         
         if st.button("➕ Lägg till Graderat Kort", key="btn_graded"):
             add_to_collection(st.session_state.user_id, card_id, card['name'], card['set']['id'], card['number'], est_val, card['images']['small'], "Normal", 1, p_price_g, True, g_comp, g_val, cert_num)
             st.success("Graderat kort tillagt!")
 
-    st.divider()
-    st.write("### Manage Quantity")
+with c1:
+    # --- RITA UT BILDEN MED LIVE-EFFEKT ---
+    # Vi läser av vad användaren har valt i rullgardinsmenyn i c2-kolumnen
+    current_variant = st.session_state.get("raw_var", "Normal")
+    img_url = card['images']['large']
     
-    def qty_row(variant_name, price_mult=1.0):
-        c_name, c_minus, c_plus = st.columns([2, 1, 1])
-        with c_name:
-            st.write(f"**{variant_name}**")
-        with c_minus:
-            if st.button("−", key=f"min_{variant_name}"):
-                update_quantity(st.session_state.user_id, card_id, variant_name, -1)
-                st.toast("Uppdaterad!")
-        with c_plus:
-            if st.button("➕", key=f"add_{variant_name}"):
-                add_to_collection(
-                    st.session_state.user_id, card_id, card['name'], 
-                    card['set']['id'], card['number'], base_price * price_mult, 
-                    card['images']['small'], variant_name, 1
-                )
-                st.toast("Tillagd!")
-
-    qty_row("Normal", 1.0)
-    qty_row("Reverse Holofoil", 1.2)
+    if "Reverse Holo" in current_variant:
+        st.markdown(f"""
+        <div class="card-wrapper">
+            <img src="{img_url}">
+            <div class="reverse-holo-overlay"></div>
+        </div>
+        """, unsafe_allow_html=True)
+    elif "Holo" in current_variant:
+        st.markdown(f"""
+        <div class="card-wrapper">
+            <img src="{img_url}">
+            <div class="holo-overlay"></div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.image(img_url, width="stretch")

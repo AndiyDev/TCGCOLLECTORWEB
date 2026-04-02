@@ -28,11 +28,9 @@ if not selected_set:
     st.write("Välj ett set för att se alla kort.")
     st.divider()
     
-    # 1. Ändrat till 4 kolumner för att göra bilderna mindre och mer proportionerliga
     cols = st.columns(4) 
     for idx, s_data in enumerate(all_sets):
         with cols[idx % 4]:
-            # 2. Skapar en osynlig box (120px hög) som tvingar alla logotyper att linjera perfekt
             st.markdown(f"""
                 <div style="height: 120px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
                     <img src="{s_data['images']['logo']}" style="max-height: 100%; max-width: 100%; object-fit: contain;">
@@ -42,10 +40,8 @@ if not selected_set:
             owned_in_set = user_df[user_df['set_code'] == s_data['id']]['api_id'].nunique()
             total_in_set = s_data['printedTotal']
             
-            # Centrerar texten för att matcha den snygga boxen
             st.markdown(f"<p style='text-align: center; color: #888; font-size: 0.9rem; margin-bottom: 10px;'>Samlat: {owned_in_set} / {total_in_set}</p>", unsafe_allow_html=True)
             
-            # Knappen linjerar nu upp exakt med grannarna!
             if st.button("Visa kort", key=f"btn_{s_data['id']}", use_container_width=True):
                 st.query_params["set_id"] = s_data['id']
                 st.rerun()
@@ -66,27 +62,47 @@ else:
     st.divider()
     
     user_df = get_user_collection(st.session_state.user_id)
-    owned_card_ids = user_df['api_id'].values
     
     cols = st.columns(4)
     for idx, card in enumerate(cards):
         with cols[idx % 4]:
-            is_owned = card['id'] in owned_card_ids
-            
-            # Visa tydligt om du redan äger kortet (och bevara höjden)
-            if is_owned:
-                st.success("✅ I samlingen")
+            # --- RÄKNA UT ANTAL ÄGDA KORT ---
+            if not user_df.empty:
+                owned_rows = user_df[user_df['api_id'] == card['id']]
+                total_owned = int(owned_rows['quantity'].sum()) if not owned_rows.empty else 0
             else:
-                # En osynlig ruta med samma höjd som "success"-meddelandet för att hålla korten på samma rad
-                st.markdown("<div style='height: 42px;'></div>", unsafe_allow_html=True) 
+                total_owned = 0
+            
+            # Visa mängd eller en tom utfyllnadsruta för att behålla den raka designen
+            if total_owned > 0:
+                st.markdown(f"<div style='background-color: #1a231c; border: 1px solid #00ff88; color: #00ff88; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; margin-bottom: 10px;'>📦 Äger: {total_owned} st</div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<div style='height: 40px; margin-bottom: 10px;'></div>", unsafe_allow_html=True) 
             
             st.image(card['images']['small'], width="stretch")
             st.write(f"**{card['name']}**")
             st.caption(f"#{card['number']}")
             
+            # --- VÄLJ VARIANT ---
+            var_options = ["Normal", "Reverse Holofoil", "Holofoil"]
+            sel_var = st.selectbox("Välj variant", var_options, key=f"var_{card['id']}", label_visibility="collapsed")
+            
             price = card.get('cardmarket', {}).get('prices', {}).get('averageSellPrice', 0.0)
+            
             if st.button("➕ Lägg till", key=f"add_{card['id']}", use_container_width=True):
-                add_to_collection(st.session_state.user_id, card['id'], card['name'], card['set']['id'], card['number'], price, card['images']['small'])
-                st.toast(f"{card['name']} tillagd!")
+                # Justera priset lite om det är Holo/Reverse för att det ska bli mer realistiskt innan sync
+                final_price = price * 1.2 if "Holo" in sel_var else price
+                
+                add_to_collection(
+                    uid=st.session_state.user_id, 
+                    api_id=card['id'], 
+                    name=card['name'], 
+                    set_c=card['set']['id'], 
+                    num=card['number'], 
+                    val=final_price, 
+                    img=card['images']['small'], 
+                    var=sel_var # Skickar in den valda varianten!
+                )
+                st.toast(f"{card['name']} ({sel_var}) tillagd!")
                 st.rerun() 
             st.divider()
