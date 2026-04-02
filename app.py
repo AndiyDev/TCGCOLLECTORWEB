@@ -4,6 +4,68 @@ from database import init_db, verify_user, register_user
 # 1. Konfiguration (Måste ligga allra först)
 st.set_page_config(page_title="Collectr Pro", layout="wide", initial_sidebar_state="collapsed")
 
+# --- NY KOD: CSS INJEKTION FÖR CUSTOM DESIGN ---
+def load_custom_css():
+    st.markdown("""
+    <style>
+    /* Dölj Streamlits standardmenyer, header och footer */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* Modern kort-design för Metrics (Siffrorna på Dashboarden) */
+    [data-testid="metric-container"] {
+        background-color: #1E1E1E;
+        border: 1px solid #333;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        transition: transform 0.2s ease;
+    }
+    [data-testid="metric-container"]:hover {
+        transform: translateY(-2px);
+    }
+
+    /* Snyggare knappar med hover-effekt */
+    .stButton>button {
+        border-radius: 8px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 255, 136, 0.2);
+        border-color: #00ff88;
+        color: #00ff88;
+    }
+
+    /* Design för flikar (Tabs) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px 8px 0 0;
+        padding: 10px 20px;
+        background-color: #161a20;
+        border: 1px solid #333;
+        border-bottom: none;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #1e1e1e;
+        border-top: 2px solid #00ff88;
+    }
+    
+    /* Avskiljare */
+    hr {
+        border-top: 1px solid #333;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Ladda vår design direkt
+load_custom_css()
+# -----------------------------------------------
+
 # 2. Initiera säker session_state
 defaults = {"logged_in": False, "user_id": None, "username": None, "currency": "SEK"}
 for k, v in defaults.items():
@@ -20,6 +82,25 @@ except Exception as e:
 # 4. Skapa inloggningsskärmen som en funktion
 def login_screen():
     st.title("Collectr Pro")
+
+    # --- TILLFÄLLIG KNAPP: Radera när databasen är fixad ---
+    st.divider()
+    if st.button("⚠️ Återställ Databasen (Raderar allt)"):
+        from sqlalchemy import text
+        conn = st.connection("mysql", type="sql")
+        with conn.session as s:
+            s.execute(text("DROP TABLE IF EXISTS portfolio_history"))
+            s.execute(text("DROP TABLE IF EXISTS wishlist"))
+            s.execute(text("DROP TABLE IF EXISTS sealed_collection")) # <-- NY TABELL
+            s.execute(text("DROP TABLE IF EXISTS collection"))
+            s.execute(text("DROP TABLE IF EXISTS users"))
+            s.commit()
+        
+        from database import init_db
+        init_db()
+        st.success("Databas återställd! Klicka på 'Clear cache' i Streamlit-menyn och uppdatera sidan.")
+    st.divider()
+    # --------------------------------------------------------
     
     tab_login, tab_register = st.tabs(["Logga in", "Skapa konto"])
     
