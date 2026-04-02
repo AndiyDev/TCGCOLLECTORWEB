@@ -31,20 +31,24 @@ if not st.session_state.logged_in:
         else:
             st.error("Ogiltigt användarnamn eller lösenord.")
 
-    # TILLFÄLLIG KNAPP: Radera när databasen är fixad
-    st.divider()
-    if st.button("⚠️ Återställ Databasen (Raderar allt)"):
-        from sqlalchemy import text
-        conn = st.connection("mysql", type="sql")
-        with conn.session as s:
-            s.execute(text("DROP TABLE IF EXISTS portfolio_history"))
-            s.execute(text("DROP TABLE IF EXISTS wishlist"))
-            s.execute(text("DROP TABLE IF EXISTS collection"))
-            s.execute(text("DROP TABLE IF EXISTS users"))
-            s.commit()
-        init_db()
-        st.success("Databas återställd! Uppdatera sidan och skapa en ny användare.")
-
+    # --- FLIK 2: REGISTRERA ---
+    with tab_register:
+        u_reg = st.text_input("Välj Användarnamn", key="reg_u")
+        p_reg = st.text_input("Välj Lösenord", type="password", key="reg_p")
+        p_reg2 = st.text_input("Bekräfta Lösenord", type="password", key="reg_p2")
+        
+        if st.button("Registrera mig", type="primary"):
+            if p_reg != p_reg2:
+                st.error("Lösenorden matchar inte.")
+            elif len(u_reg) < 3 or len(p_reg) < 6:
+                st.error("Användarnamnet måste vara minst 3 tecken och lösenordet minst 6 tecken.")
+            else:
+                success = register_user(u_reg, p_reg)
+                if success:
+                    st.success("Konto skapat! Byt till fliken 'Logga in' för att fortsätta.")
+                else:
+                    st.error("Användarnamnet är redan upptaget. Välj ett annat.")
+    
     st.stop()
 
 pg = st.navigation([
