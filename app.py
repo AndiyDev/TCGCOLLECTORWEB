@@ -17,20 +17,26 @@ except Exception as e:
     st.stop()
 
 if not st.session_state.logged_in:
-    st.title("Collectr Pro - Login")
-    u = st.text_input("Username")
-    p = st.text_input("Password", type="password")
+    st.title("Collectr Pro")
     
-    if st.button("Login", type="primary"):
-        uid = verify_user(u, p)
-        if uid:
-            st.session_state.logged_in = True
-            st.session_state.user_id = uid
-            st.session_state.username = u
-            st.rerun()
-        else:
-            st.error("Ogiltigt användarnamn eller lösenord.")
-
+    # Skapa flikar för Logga in / Registrera
+    tab_login, tab_register = st.tabs(["Logga in", "Skapa konto"])
+    
+    # --- FLIK 1: LOGGA IN ---
+    with tab_login:
+        u_login = st.text_input("Användarnamn", key="login_u")
+        p_login = st.text_input("Lösenord", type="password", key="login_p")
+        
+        if st.button("Logga in", type="primary"):
+            uid = verify_user(u_login, p_login)
+            if uid:
+                st.session_state.logged_in = True
+                st.session_state.user_id = uid
+                st.session_state.username = u_login
+                st.rerun()
+            else:
+                st.error("Ogiltigt användarnamn eller lösenord.")
+                
     # --- FLIK 2: REGISTRERA ---
     with tab_register:
         u_reg = st.text_input("Välj Användarnamn", key="reg_u")
