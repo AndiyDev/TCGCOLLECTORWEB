@@ -6,7 +6,7 @@ import time
 # --- ANSLUTNING ---
 def get_conn():
     """Hanterar anslutningen till Streamlit MySQL."""
-    return st.connection("pokemon_db", type="sql")
+    return st.connection("mysql", type="sql")
 
 # --- INITIALISERING ---
 def init_db():
