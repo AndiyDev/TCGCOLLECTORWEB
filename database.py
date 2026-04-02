@@ -17,14 +17,19 @@ def init_db():
         # Global Catalog
         s.execute(text("""
             CREATE TABLE IF NOT EXISTS global_cards (
-                api_id VARCHAR(100) PRIMARY KEY,
+                api_id VARCHAR(100) PRIMARY KEY,  -- t.ex. 'me01-36'
                 name VARCHAR(255),
-                set_id VARCHAR(100),
-                set_name VARCHAR(255),
-                card_number VARCHAR(20),
+                hp INT,
+                stage VARCHAR(50),               -- t.ex. 'Mega Evolution'
+                set_intern_id VARCHAR(50),       -- 'me01'
+                set_number_id VARCHAR(50),       -- 'ME1'
+                set_symbol_id VARCHAR(50),       -- 'MEG'
+                card_number VARCHAR(20),         -- '36'
+                total_in_set VARCHAR(20),        -- '132'
+                rarity VARCHAR(50),              -- 'Double Rare'
                 image_url VARCHAR(500),
-                market_price DECIMAL(10, 2) DEFAULT 0.00,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                attacks_json JSON,               -- Sparar Hammer-lanche, Frost Barrier etc.
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
         # User Portfolio
@@ -77,6 +82,20 @@ def init_db():
                 target_price DECIMAL(10,2), 
                 current_price DECIMAL(10,2), 
                 image_url VARCHAR(500)
+            )
+        """))
+        s.execute(text("""
+            CREATE TABLE IF NOT EXISTS global_cards (
+                api_id VARCHAR(100) PRIMARY KEY, -- t.ex. me01-36
+                name VARCHAR(255),
+                hp VARCHAR(10),
+                set_intern_id VARCHAR(50),      -- me01
+                set_number_id VARCHAR(50),      -- ME1
+                set_symbol_id VARCHAR(50),      -- MEG
+                card_number VARCHAR(20),        -- 36
+                image_url_local VARCHAR(500),   -- Länk till sparad fil
+                full_data_json JSON,            -- Här sparar vi attacker/weakness som rådata
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
         s.commit()

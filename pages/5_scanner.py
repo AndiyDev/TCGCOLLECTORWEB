@@ -1,79 +1,87 @@
 import streamlit as st
 import cv2
 import numpy as np
-import os
+import json
 import pytesseract
 import requests
+import re
 from database import add_item_to_user
-from set_mapping import SET_MAP # Importen från steg 1
 
-st.title("🗃️ Manuell Symbol-Scanner")
+# Ladda din master-lista
+try:
+    with open("set_mapping.json", "r", encoding="utf-8") as f:
+        SET_LIBRARY = json.load(f)
+except:
+    st.error("Kör mapping-scriptet först för att skapa set_mapping.json!")
+    st.stop()
 
-# Kamerainmatning
-img_file = st.camera_input("Fokusera på set-symbolen och numret")
+st.title("🔍 Smart Card Scanner")
+
+img_file = st.camera_input("Ta en tydlig bild på kortets symbol och nummer")
 
 if img_file:
-    # 1. Läs in bilden
+    # 1. Bildbehandling
     file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
-    user_img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-    gray_user = cv2.cvtColor(user_img, cv2.COLOR_BGR2GRAY)
+    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    best_match_id = None
-    max_val = 0
+    best_match = None
+    max_score = 0
 
-    # 2. LOOPA IGENOM DINA MAPPAR (Ingen AI, bara jämförelse)
-    # Vi letar i dina mappar som vi såg på bilderna
-    base_path = "images/Set Symbols"
-    
-    with st.spinner("Letar efter matchande symbol i biblioteket..."):
-        for root, dirs, files in os.walk(base_path):
-            for file in files:
-                if file.endswith(".png"):
-                    template_path = os.path.join(root, file)
-                    template = cv2.imread(template_path, 0)
-                    if template is None: continue
-                    
-                    # Template Matching - Matematisk jämförelse
-                    res = cv2.matchTemplate(gray_user, template, cv2.TM_CCOEFF_NORMED)
-                    _, val, _, _ = cv2.minMaxLoc(res)
-                    
-                    if val > max_val:
-                        max_val = val
-                        # Matcha filnamnet (t.ex. "Jungle") mot vårt Set ID (base2)
-                        clean_name = file.replace(".png", "")
-                        best_match_id = SET_MAP.get(clean_name)
-
-    # 3. RESULTAT & NUMMER-CHECK
-    if max_val > 0.70 and best_match_id:
-        st.success(f"Hittade symbolen för: **{best_match_id}** (Match: {max_val:.2%})")
-        
-        # Nu kör vi en enkel OCR-läsning för att hitta siffrorna
-        # Vi letar efter tal i den nedre delen av bilden
-        h, w = gray_user.shape
-        roi = gray_user[int(h*0.7):, :] # Bara botten av kortet
-        card_num_text = pytesseract.image_to_string(roi, config='--psm 11 -c tessedit_char_whitelist=0123456789/')
-        
-        # Extrahera siffror (t.ex. från "44/64")
-        import re
-        match = re.search(r'(\d+)', card_num_text)
-        
-        if match:
-            card_num = match.group(1)
-            st.write(f"Identifierat nummer: **{card_num}**")
+    # 2. Hitta Set Symbol (Template Matching - Ingen AI)
+    with st.spinner("Identifierar Set..."):
+        for name, data in SET_LIBRARY.items():
+            template = cv2.imread(data['symbol_local_path'], 0)
+            if template is None: continue
             
-            # 4. HÄMTA FRÅN API (Enda gången vi använder nätet)
-            if st.button("Hämta kortinfo och bekräfta"):
-                api_url = f"https://api.pokemontcg.io/v2/cards?q=set.id:{best_match_id} number:{card_num}"
-                data = requests.get(api_url).json().get('data')
-                
-                if data:
-                    card = data[0]
-                    st.image(card['images']['small'])
-                    st.write(f"Är detta **{card['name']}**?")
-                    if st.button("Spara i samling"):
-                        add_item_to_user(st.session_state.user_id, card, "Normal", 0.0)
-                        st.balloons()
-                else:
-                    st.error("Kunde inte hitta ett kort med det numret i det setet.")
+            res = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)
+            _, val, _, _ = cv2.minMaxLoc(res)
+            
+            if val > max_score:
+                max_score = val
+                best_match = data
+
+    # Tröskelvärde för matchning (0.7-0.8 brukar vara bra)
+    if best_match and max_score > 0.75:
+        st.success(f"Hittade symbol: **{best_match['set_name']}** ({max_score:.1%})")
+        
+        # 3. Läs Nummer (OCR)
+        # Vi tittar specifikt efter mönster som "44/64" eller "150/149"
+        ocr_text = pytesseract.image_to_string(gray, config='--psm 11')
+        num_match = re.search(r'(\d+)\s*/\s*(\d+)', ocr_text)
+        
+        if num_match:
+            card_num = num_match.group(1)
+            set_max = int(num_match.group(2))
+            
+            st.info(f"Läste nummer: {card_num}/{set_max}")
+
+            # 4. Logisk Validering (Fake-check utan AI)
+            is_fake_suspect = False
+            reasons = []
+
+            # Check: Stämmer setets maxnummer?
+            if set_max != best_match['printed_total']:
+                is_fake_suspect = True
+                reasons.append(f"Felaktigt max-nummer för detta set (Väntat: {best_match['printed_total']})")
+
+            # Check: Är numret helt orimligt (Secret rares inkluderade)?
+            if int(card_num) > best_match['total_including_secrets']:
+                is_fake_suspect = True
+                reasons.append(f"Numret {card_num} existerar inte i detta set (Max inkl. secrets: {best_match['total_including_secrets']})")
+
+            if is_fake_suspect:
+                st.error("⚠️ Misstänkt Fake!")
+                for r in reasons: st.write(f"- {r}")
+            else:
+                # 5. Hämta exakt data från API
+                if st.button(f"Bekräfta {best_match['set_name']} #{card_num}"):
+                    res = requests.get(f"https://api.pokemontcg.io/v2/cards?q=set.id:{best_match['api_id']} number:{card_num}")
+                    card_data = res.json().get('data')
+                    if card_data:
+                        st.image(card_data[0]['images']['small'])
+                        if st.button("Spara i Portfölj"):
+                            add_item_to_user(st.session_state.user_id, card_data[0], "Normal", 0.0)
+                            st.balloons()
     else:
-        st.warning("Kunde inte matcha symbolen. Försök hålla kameran stadigare eller närmare symbolen.")
+        st.warning("Kunde inte identifiera symbolen. Prova bättre ljus eller håll kameran närmare.")
