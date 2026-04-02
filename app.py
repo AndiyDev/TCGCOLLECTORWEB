@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from database import init_db, verify_user, register_user
 
 # 1. Konfiguration (Måste ligga allra först)
@@ -62,8 +63,40 @@ def load_custom_css():
     </style>
     """, unsafe_allow_html=True)
 
-# Ladda vår design direkt
+# --- NY KOD: PWA INJEKTION ---
+def setup_pwa():
+    components.html("""
+        <script>
+            const doc = window.parent.document;
+            
+            // 1. Lägg till Manifest för PWA
+            if (!doc.querySelector("link[rel='manifest']")) {
+                const manifest = doc.createElement('link');
+                manifest.rel = 'manifest';
+                manifest.href = '/app/static/manifest.json';
+                doc.head.appendChild(manifest);
+            }
+            
+            // 2. Lägg till Apple Touch Icon (Viktigt för iPhone)
+            if (!doc.querySelector("link[rel='apple-touch-icon']")) {
+                const appleIcon = doc.createElement('link');
+                appleIcon.rel = 'apple-touch-icon';
+                appleIcon.href = 'https://upload.wikimedia.org/wikipedia/commons/5/53/Pok%C3%A9_Ball_icon.svg';
+                doc.head.appendChild(appleIcon);
+            }
+            
+            // 3. Registrera Service Worker
+            if ('serviceWorker' in window.parent.navigator) {
+                window.parent.navigator.serviceWorker.register('/app/static/sw.js')
+                .then(reg => console.log('PWA Service Worker registered!'))
+                .catch(err => console.log('PWA SW failed:', err));
+            }
+        </script>
+    """, height=0, width=0)
+
+# Ladda vår design och PWA
 load_custom_css()
+setup_pwa()
 # -----------------------------------------------
 
 # 2. Initiera säker session_state

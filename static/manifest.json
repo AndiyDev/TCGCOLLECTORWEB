@@ -1,0 +1,16 @@
+{
+  "name": "Collectr Pro",
+  "short_name": "Collectr",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e1117",
+  "theme_color": "#00ff88",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/5/53/Pok%C3%A9_Ball_icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

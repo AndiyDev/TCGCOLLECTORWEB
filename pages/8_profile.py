@@ -51,6 +51,6 @@ if st.button("Radera Konto", type="primary", disabled=not confirm_delete):
 
 st.divider()
 
-if st.button("Logga Ut", use_container_width=True):
+if st.button("Logga Ut", width="stretch"):
     st.session_state.clear()
     st.rerun()

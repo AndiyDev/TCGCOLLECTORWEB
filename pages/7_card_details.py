@@ -26,7 +26,7 @@ if st.button("← Back to Portfolio"):
 
 c1, c2 = st.columns([1, 1])
 with c1:
-    st.image(card['images']['large'], use_container_width=True)
+    st.image(card['images']['large'], width="stretch")
 with c2:
     st.title(card['name'])
     st.caption(f"{card['set']['name']} • {card['number']}")
@@ -45,11 +45,11 @@ with c2:
     
     col_links1, col_links2, col_links3 = st.columns(3)
     with col_links1:
-        st.link_button("Cardmarket", f"https://www.cardmarket.com/en/Pokemon/Products/Search?searchString={cm_search}", use_container_width=True)
+        st.link_button("Cardmarket", f"https://www.cardmarket.com/en/Pokemon/Products/Search?searchString={cm_search}", width="stretch")
     with col_links2:
-        st.link_button("Tradera", f"https://www.tradera.com/search?q={search_q}", use_container_width=True)
+        st.link_button("Tradera", f"https://www.tradera.com/search?q={search_q}", width="stretch")
     with col_links3:
-        st.link_button("eBay", f"https://www.ebay.com/sch/i.html?_nkw={search_q}", use_container_width=True)
+        st.link_button("eBay", f"https://www.ebay.com/sch/i.html?_nkw={search_q}", width="stretch")
 
     st.divider()
 

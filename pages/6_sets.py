@@ -36,7 +36,7 @@ if not selected_set:
     for idx, s_data in enumerate(all_sets):
         with cols[idx % 3]:
             # Visa logotypen
-            st.image(s_data['images']['logo'], use_container_width=True)
+            st.image(s_data['images']['logo'], width="stretch")
             
             # Räkna ut progress (hur många kort du äger i just detta set)
             owned_in_set = user_df[user_df['set_code'] == s_data['id']]['api_id'].nunique()
@@ -44,7 +44,7 @@ if not selected_set:
             st.caption(f"Samlat: {owned_in_set} / {total_in_set}")
             
             # Knapp för att dyka in i setet
-            if st.button("Visa kort", key=f"btn_{s_data['id']}", use_container_width=True):
+            if st.button("Visa kort", key=f"btn_{s_data['id']}", width="stretch"):
                 st.query_params["set_id"] = s_data['id']
                 st.rerun()
             st.divider()
@@ -80,13 +80,13 @@ else:
             else:
                 st.write("") # Tomt utrymme så designen håller sig i linje
             
-            st.image(card['images']['small'], use_container_width=True)
+            st.image(card['images']['small'], width="stretch")
             st.write(f"**{card['name']}**")
             st.caption(f"#{card['number']}")
             
             # Lägg till-knapp direkt under varje kort
             price = card.get('cardmarket', {}).get('prices', {}).get('averageSellPrice', 0.0)
-            if st.button("➕ Lägg till", key=f"add_{card['id']}", use_container_width=True):
+            if st.button("➕ Lägg till", key=f"add_{card['id']}", width="stretch"):
                 add_to_collection(st.session_state.user_id, card['id'], card['name'], card['set']['id'], card['number'], price, card['images']['small'])
                 st.toast(f"{card['name']} tillagd!")
                 st.rerun() # Ladda om för att visa ✅

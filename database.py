@@ -74,6 +74,19 @@ def init_db():
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
             """))
+            s.execute(text("""
+                CREATE TABLE IF NOT EXISTS sealed_collection (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT,
+                    product_name VARCHAR(255),
+                    product_type VARCHAR(50),
+                    quantity INT DEFAULT 1,
+                    purchase_price DECIMAL(10, 2) DEFAULT 0.00,
+                    market_value DECIMAL(10, 2) DEFAULT 0.00,
+                    image_url VARCHAR(500),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """))
             s.commit()
         except Exception as e:
             logging.error(f"Databas initieringsfel: {e}")
@@ -164,4 +177,24 @@ def delete_from_wishlist(wid, uid):
     conn = get_conn()
     with conn.session as s:
         s.execute(text("DELETE FROM wishlist WHERE id = :id AND user_id = :uid"), {"id": wid, "uid": uid})
+        s.commit()
+
+# Lägg till dessa funktioner längst ner i database.py
+def add_sealed_product(uid, name, p_type, qty, p_price, m_val, img):
+    conn = get_conn()
+    with conn.session as s:
+        s.execute(text('''
+            INSERT INTO sealed_collection (user_id, product_name, product_type, quantity, purchase_price, market_value, image_url)
+            VALUES (:uid, :n, :t, :q, :pp, :mv, :img)
+        '''), {"uid": uid, "n": name, "t": p_type, "q": qty, "pp": p_price, "mv": m_val, "img": img})
+        s.commit()
+
+def get_user_sealed(uid):
+    conn = get_conn()
+    return conn.query("SELECT * FROM sealed_collection WHERE user_id = :uid", params={"uid": uid}, ttl=0)
+
+def delete_sealed(sid, uid):
+    conn = get_conn()
+    with conn.session as s:
+        s.execute(text("DELETE FROM sealed_collection WHERE id = :id AND user_id = :uid"), {"id": sid, "uid": uid})
         s.commit()
