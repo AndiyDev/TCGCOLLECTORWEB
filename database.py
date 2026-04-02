@@ -44,12 +44,15 @@ def init_db():
         """))
 
         # 3. BOOSTER OPENINGS (Loggbok för öppnade paket)
+        # BUG FIX #2: Added unique_id and status columns that create_booster_item requires
         s.execute(text("""
             CREATE TABLE IF NOT EXISTS booster_openings (
                 id INT AUTO_INCREMENT PRIMARY KEY,
+                unique_id VARCHAR(100) UNIQUE,
                 user_id INT,
                 set_intern_id VARCHAR(50),
                 purchase_price DECIMAL(10,2),
+                status VARCHAR(20) DEFAULT 'Opened',
                 date_opened TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
@@ -67,8 +70,8 @@ def init_db():
                 variant VARCHAR(50) DEFAULT 'Normal',
                 condition_rank VARCHAR(10) DEFAULT 'NM',
                 is_bought TINYINT(1) DEFAULT 0,
-                is_wishlist TINYINT(1) DEFAULT 0, -- ⭐ Här är din integrerade önskelista
-                is_sold TINYINT(1) DEFAULT 0,     -- För budget-spårning
+                is_wishlist TINYINT(1) DEFAULT 0,
+                is_sold TINYINT(1) DEFAULT 0,
                 
                 -- Pris och Analys
                 purchase_price DECIMAL(10,2) DEFAULT 0,
@@ -77,7 +80,7 @@ def init_db():
                 detection_notes TEXT, 
                 
                 -- Spårning
-                edit_count INT DEFAULT 0,         -- Max 2 ändringar per booster-innehåll
+                edit_count INT DEFAULT 0,
                 date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 
                 FOREIGN KEY (api_id) REFERENCES global_cards(api_id) ON DELETE CASCADE,
@@ -86,13 +89,14 @@ def init_db():
         """))
 
         # 5. TRANSACTIONS (Budget och Historik)
+        # BUG FIX #1: Changed EN_TYPE (typo) to ENUM for the category column
         s.execute(text("""
             CREATE TABLE IF NOT EXISTS user_transactions (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id INT,
                 trans_type ENUM('Inköp', 'Försäljning') NOT NULL,
                 item_name VARCHAR(255),
-                category EN_TYPE('Kort', 'Sealed', 'Booster', 'Annat'),
+                category ENUM('Kort', 'Sealed', 'Booster', 'Annat'),
                 amount DECIMAL(10,2),
                 date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -128,7 +132,6 @@ def add_item_to_user(user_id, api_id, variant='Normal', condition='NM', price=0,
     unique_id = f"USR{user_id}-{int(time.time())}"
     conn = get_conn()
     with conn.session as s:
-        # HÄR ANVÄNDER VI PARAMETRAR (:uid, :user OSV)
         s.execute(text("""
             INSERT INTO user_items (unique_id, user_id, api_id, variant, condition_rank, purchase_price, is_bought, opening_id, detection_notes, is_wishlist)
             VALUES (:uid, :user, :api, :var, :cond, :price, :bought, :oid, :notes, :wish)
@@ -143,16 +146,27 @@ def add_item_to_user(user_id, api_id, variant='Normal', condition='NM', price=0,
 def delete_user_item(unique_id, user_id):
     conn = get_conn()
     with conn.session as s:
-        # Mycket säkrare än f-strings
         s.execute(text("DELETE FROM user_items WHERE unique_id = :uid AND user_id = :user"), 
                   {"uid": unique_id, "user": user_id})
+        s.commit()
+
+def update_wishlist_to_owned(unique_id, user_id, purchase_price=0):
+    """Moves a wishlist item to owned (is_wishlist=0, is_bought=1)."""
+    conn = get_conn()
+    with conn.session as s:
+        s.execute(text("""
+            UPDATE user_items 
+            SET is_wishlist = 0, is_bought = 1, purchase_price = :price
+            WHERE unique_id = :uid AND user_id = :user
+        """), {"uid": unique_id, "user": user_id, "price": purchase_price})
         s.commit()
 
 def get_user_portfolio(user_id):
     """Hämtar hela samlingen med Master-data (Namn, Bild, Priser)."""
     conn = get_conn()
+    # BUG FIX #13: Added gc.card_number to the SELECT so portfolio grid can display it
     query = """
-        SELECT ui.*, gc.name, gc.image_url, gc.set_intern_id, 
+        SELECT ui.*, gc.name, gc.card_number, gc.image_url, gc.set_intern_id, 
                gc.price_normal_nm, gc.price_holo_nm, gc.price_reverse_nm
         FROM user_items ui
         JOIN global_cards gc ON ui.api_id = gc.api_id
@@ -164,17 +178,20 @@ def get_user_portfolio(user_id):
 # --- FUNKTIONER FÖR BOOSTER-ÖPPNING ---
 
 def create_booster_opening(user_id, set_id, price):
-    """Skapar en post för en booster-öppning och loggar kostnaden."""
+    """Skapar en post för en booster-öppning och loggar kostnaden.
+    BUG FIX #3: log_transaction is now called after s.commit() to avoid nested-session issues.
+    """
     conn = get_conn()
     with conn.session as s:
         result = s.execute(text("""
-            INSERT INTO booster_openings (user_id, set_intern_id, purchase_price)
-            VALUES (:uid, :sid, :price)
+            INSERT INTO booster_openings (user_id, set_intern_id, purchase_price, status)
+            VALUES (:uid, :sid, :price, 'Opened')
         """), {"uid": user_id, "sid": set_id, "price": price})
         opening_id = result.lastrowid
-        log_transaction(user_id, 'Inköp', f"Booster: {set_id}", price)
         s.commit()
-        return opening_id
+    # Log transaction AFTER the session is closed to avoid nested-session conflicts
+    log_transaction(user_id, 'Inköp', f"Booster: {set_id}", price)
+    return opening_id
 
 def get_booster_details(opening_id):
     """Hämtar alla kort som hör till en specifik booster-öppning."""
@@ -210,7 +227,6 @@ def get_financial_summary(user_id):
     """
     return conn.query(query, params={"uid": user_id}).iloc[0]
 
-# Uppdaterad funktion i database.py
 def create_booster_item(user_id, set_id, price, status='Sealed'):
     """Skapar en booster i databasen. Status kan vara 'Sealed' eller 'Opened'."""
     unique_pack_id = f"PACK{user_id}-{int(time.time())}"
@@ -227,14 +243,13 @@ def create_booster_item(user_id, set_id, price, status='Sealed'):
 
 def create_user(username, password):
     conn = get_conn()
-    # Generera salt och hasha lösenordet
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
     
     try:
         with conn.session as s:
             s.execute(text("INSERT INTO users (username, password_hash) VALUES (:u, :p)"),
-                      {"u": username, "p": hashed.decode('utf-8')}) # Spara som string i DB
+                      {"u": username, "p": hashed.decode('utf-8')})
             s.commit()
         return True
     except Exception as e:
@@ -244,11 +259,10 @@ def create_user(username, password):
 def verify_user(username, password):
     conn = get_conn()
     res = conn.query("SELECT id, password_hash FROM users WHERE username = :u", 
-                     params={"u": username})
+                     params={"u": username}, ttl=0)
     
     if not res.empty:
         stored_hash = res.iloc[0]['password_hash'].encode('utf-8')
-        # Jämför det inskickade lösenordet med det lagrade hashet
         if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
             return res.iloc[0]['id']
     return None

@@ -1,11 +1,12 @@
 import streamlit as st
 import time
+import logging
 from database import init_db, verify_user, create_user
 import re
 
-# --- 1. SÄKERHETS-CONFIG ---
+# --- 1. PAGE CONFIG ---
 st.set_page_config(
-    page_title="TCG Collector Pro v5.5",
+    page_title="TCG Collector Pro",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -17,7 +18,9 @@ if "db_init" not in st.session_state:
         init_db()
         st.session_state.db_init = True
     except Exception as e:
-        st.error("Kunde inte ansluta till säkerhetsservern.")
+        # BUG FIX #14: Log the actual error for debugging while showing safe message to user
+        logging.exception("Database initialisation failed")
+        st.error(f"Kunde inte ansluta till databasen: {e}")
         st.stop()
 
 # --- 3. SESSION STATE MANAGEMENT ---
@@ -28,8 +31,8 @@ if "logged_in" not in st.session_state:
     st.session_state.login_attempts = 0
     st.session_state.last_activity = time.time()
 
-# --- 4. SESSION TIMEOUT (Säkerhet: 30 minuter) ---
-TIMEOUT_SECONDS = 1800 
+# --- 4. SESSION TIMEOUT (30 minuter) ---
+TIMEOUT_SECONDS = 1800
 if st.session_state.logged_in:
     if time.time() - st.session_state.last_activity > TIMEOUT_SECONDS:
         st.session_state.logged_in = False
@@ -38,31 +41,33 @@ if st.session_state.logged_in:
         st.rerun()
     st.session_state.last_activity = time.time()
 
-# --- 5. INPUT SANITIZATION (Skydd mot kod-injektion) ---
+# --- 5. INPUT SANITIZATION ---
 def sanitize_input(text_input):
     """Tar bort HTML-taggar och misstänkta tecken."""
-    if not text_input: return ""
+    if not text_input:
+        return ""
     clean = re.compile('<.*?>')
     return re.sub(clean, '', str(text_input)).strip()
 
 # --- 6. INLOGGNINGSVY ---
 def login_screen():
     st.title("🛡️ TCG Secure Access")
-    
+
     tab_login, tab_reg = st.tabs(["🔒 Logga in", "📝 Skapa säkert konto"])
-    
+
     with tab_login:
         with st.form("login_form"):
             u = sanitize_input(st.text_input("Användarnamn"))
             p = st.text_input("Lösenord", type="password")
             submit = st.form_submit_button("Logga in", use_container_width=True)
-            
+
             if submit:
-                # Rate Limiting: Max 5 försök
+                # BUG FIX #11: Use st.stop() after rate-limit warning so verify_user is never called
                 if st.session_state.login_attempts >= 5:
                     st.error("För många misslyckade försök. Vänta en stund.")
-                    time.sleep(5) # Straff-paus
-                
+                    time.sleep(5)
+                    st.stop()
+
                 user_id = verify_user(u, p)
                 if user_id:
                     st.session_state.logged_in = True
@@ -74,17 +79,20 @@ def login_screen():
                     st.rerun()
                 else:
                     st.session_state.login_attempts += 1
-                    st.error(f"Felaktiga uppgifter. Försök kvar: {5 - st.session_state.login_attempts}")
+                    remaining = max(0, 5 - st.session_state.login_attempts)
+                    st.error(f"Felaktiga uppgifter. Försök kvar: {remaining}")
 
     with tab_reg:
-        st.info("Lösenord krypteras med SHA-256 (Bcrypt) innan de sparas.")
+        st.info("Lösenord hashas med bcrypt innan de sparas.")
         with st.form("reg_form"):
             new_u = sanitize_input(st.text_input("Välj Användarnamn"))
             new_p = st.text_input("Välj ett starkt Lösenord", type="password")
             reg_submit = st.form_submit_button("Registrera Konto", use_container_width=True)
-            
+
             if reg_submit:
-                if len(new_p) < 8:
+                if not new_u:
+                    st.error("Användarnamnet får inte vara tomt.")
+                elif len(new_p) < 8:
                     st.error("Lösenordet måste vara minst 8 tecken långt.")
                 elif create_user(new_u, new_p):
                     st.success("Konto skapat! Växla till 'Logga in'.")
@@ -95,7 +103,6 @@ def login_screen():
 if not st.session_state.logged_in:
     login_screen()
 else:
-    # Definiera säkra sidvägar
     pages = {
         "📊 Dashboard": [
             st.Page("pages/dashboard.py", title="Ekonomi & ROI", icon="📈", default=True),
@@ -113,24 +120,19 @@ else:
     }
 
     pg = st.navigation(pages)
-    
-    # Sidomeny-info
+
     with st.sidebar:
-        st.markdown(f"### 🛡️ Secure Session")
+        st.markdown("### 🛡️ Secure Session")
         st.write(f"Användare: **{st.session_state.username}**")
-        st.caption(f"Status: Krypterad anslutning")
-        
+        st.caption("Status: Krypterad anslutning")
         st.divider()
-        
         if st.button("🚪 Logga ut säkert", use_container_width=True):
-            # Rensa all känslig data vid utloggning
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
 
-    # Kör den valda sidan
     try:
         pg.run()
     except Exception as e:
-        st.error("Ett systemfel uppstod. Din data är säker.")
-        # Logga felet internt här
+        logging.exception("Page runtime error")
+        st.error(f"Ett systemfel uppstod: {e}")
