@@ -71,6 +71,19 @@ def verify_user(username, password):
         return int(res.iloc[0]['id'])
     return None
 
+def register_user(username, password):
+    conn = get_conn()
+    # Skapa en säker hash av lösenordet
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    with conn.session as s:
+        try:
+            s.execute(text("INSERT INTO users (username, password_hash) VALUES (:u, :p)"), {"u": username, "p": hashed})
+            s.commit()
+            return True
+        except Exception:
+            # Om det kraschar är det troligtvis för att användarnamnet (UNIQUE) redan finns
+            return False
+
 def get_user_collection(uid):
     conn = get_conn()
     return conn.query("SELECT * FROM collection WHERE user_id = :uid", params={"uid": uid})
