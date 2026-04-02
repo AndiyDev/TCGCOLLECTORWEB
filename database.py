@@ -149,3 +149,21 @@ def get_portfolio_history(uid):
 def get_wishlist(uid):
     conn = get_conn()
     return conn.query("SELECT * FROM wishlist WHERE user_id = :uid", params={"uid": uid}, ttl=0)
+
+def update_card_market_value(api_id, new_value):
+    conn = get_conn()
+    with conn.session as s:
+        # Uppdaterar det globala marknadsvärdet för kortet
+        s.execute(text("UPDATE global_cards SET market_price = :val WHERE api_id = :aid"), {"val": new_value, "aid": api_id})
+        s.commit()
+
+def record_portfolio_history(uid, total_value):
+    conn = get_conn()
+    with conn.session as s:
+        # Sparar dagens totalvärde i historiken
+        s.execute(text("""
+            INSERT INTO portfolio_history (user_id, recorded_date, total_value) 
+            VALUES (:uid, CURDATE(), :val) 
+            ON DUPLICATE KEY UPDATE total_value = :val
+        """), {"uid": uid, "val": total_value})
+        s.commit()
