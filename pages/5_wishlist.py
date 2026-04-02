@@ -1,39 +1,64 @@
 import streamlit as st
 import requests
-from database import add_to_wishlist, get_wishlist, delete_from_wishlist
+from database import get_wishlist, add_to_wishlist, delete_from_wishlist
 from currency_utils import convert_price
 
-st.title("🎯 Wishlist")
+st.title("🎯 Wishlist & Price Alerts")
+st.write("Sätt ett målpris på kort du letar efter. Om marknadspriset sjunker under din gräns får du en notis!")
+
 currency = st.session_state.currency
 
-with st.expander("Lägg till i önskelista"):
-    search = st.text_input("Sök kort att bevaka")
-    if st.button("Sök"):
-        res = requests.get(f"https://api.pokemontcg.io/v2/cards?q=name:\"{search}\"&pageSize=5").json()
-        for card in res.get("data", []):
-            col1, col2 = st.columns([1, 3])
-            price = card.get("cardmarket", {}).get("prices", {}).get("averageSellPrice", 0.0)
-            with col1:
-                st.image(card["images"]["small"])
-            with col2:
-                st.write(f"**{card['name']}**")
-                target = st.number_input(f"Målpris ({currency})", key=f"targ_{card['id']}")
-                if st.button("Bevaka", key=f"btn_{card['id']}"):
-                    add_to_wishlist(st.session_state.user_id, card['name'], card['set']['id'], card['number'], target, price, card["images"]["small"])
-                    st.success("Tillagd!")
+# --- LÄGG TILL ---
+with st.expander("➕ Sök och lägg till kort för bevakning", expanded=False):
+    query = st.text_input("Sök kortnamn...")
+    if query:
+        params = {"q": f'name:"{query}" OR set.name:"{query}"', "orderBy": "-set.releaseDate", "pageSize": 5}
+        res = requests.get("https://api.pokemontcg.io/v2/cards", params=params)
+        if res.status_code == 200:
+            data = res.json().get('data', [])
+            cols = st.columns(5)
+            for i, card in enumerate(data):
+                with cols[i % 5]:
+                    st.image(card['images']['small'], width="stretch")
+                    base_price = card.get('cardmarket', {}).get('prices', {}).get('averageSellPrice', 0.0)
+                    local_price = convert_price(base_price, currency)
+                    
+                    st.caption(f"Nu: {local_price:,.2f} {currency}")
+                    target_local = st.number_input("Ditt maxpris", min_value=0.0, value=float(local_price), key=f"t_{card['id']}")
+                    
+                    if st.button("Bevaka", key=f"w_{card['id']}"):
+                        # Konvertera målet tillbaka till basvalutan i bakgrunden så larmet fungerar oavsett vilken valuta man har
+                        ratio = base_price / local_price if local_price > 0 else 1
+                        target_base = target_local * ratio
+                        
+                        add_to_wishlist(st.session_state.user_id, card['name'], card['set']['name'], card['number'], target_base, base_price, card['images']['small'])
+                        st.success("Tillagd!")
+                        st.rerun()
 
 st.divider()
-w_df = get_wishlist(st.session_state.user_id)
-for _, row in w_df.iterrows():
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c1:
-        st.image(row["image_url"])
-    with c2:
-        st.write(f"**{row['item_name']}**")
-        st.write(f"Target: {row['target_price']} | Nu: {row['current_price']} EUR")
-        if row['current_price'] <= row['target_price']:
-            st.success("🔥 Pris nått!")
-    with c3:
-        if st.button("🗑️", key=f"delw_{row['id']}"):
-            delete_from_wishlist(row['id'], st.session_state.user_id)
-            st.rerun()
+
+# --- VISA ÖNSKELISTAN ---
+df = get_wishlist(st.session_state.user_id)
+if not df.empty:
+    cols = st.columns(4)
+    for idx, row in df.iterrows():
+        with cols[idx % 4]:
+            st.image(row['image_url'], width="stretch")
+            st.markdown(f"**{row['item_name']}**")
+            
+            c_price = convert_price(row['current_price'], currency)
+            t_price = convert_price(row['target_price'], currency)
+            
+            st.write(f"Nuvarande: **{c_price:,.2f}** {currency}")
+            
+            # Kolla om det är köpläge
+            if c_price <= t_price:
+                st.success(f"Mål: {t_price:,.2f} {currency} 📉 Köpläge!")
+            else:
+                st.warning(f"Mål: {t_price:,.2f} {currency}")
+                
+            if st.button("🗑️ Ta bort", key=f"delw_{row['id']}"):
+                delete_from_wishlist(row['id'], st.session_state.user_id)
+                st.rerun()
+else:
+    st.info("Din önskelista är tom. Dags att jaga lite grails!")

@@ -1,63 +1,52 @@
 import streamlit as st
 import requests
 import time
-from datetime import date
-from sqlalchemy import text
-from database import get_conn
+from database import get_user_collection, get_user_sealed, update_card_market_value, record_portfolio_history
 
 st.title("🔄 Sync Market Prices")
-st.write("Hämtar dagsfärska priser från API:et.")
+st.write("Hämta de allra senaste priserna för din samling från marknaden och spara din historik. Kör denna en gång i veckan för att få en snygg graf!")
 
-if st.button("Start Sync", type="primary"):
-    conn = get_conn()
+if st.button("🚀 Starta Synkronisering", type="primary", use_container_width=True):
     uid = st.session_state.user_id
+    df = get_user_collection(uid)
     
-    unique_cards = conn.query("SELECT DISTINCT api_id FROM collection WHERE user_id = :u", params={"u": uid})
-    
-    if unique_cards.empty:
-        st.warning("Samlingen är tom.")
-        st.stop()
-
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    total = len(unique_cards)
-    updated = 0
-
-    with conn.session as s:
-        for i, row in unique_cards.iterrows():
-            api_id = row['api_id']
+    if df.empty:
+        st.warning("Din samling är tom, inget att synkronisera.")
+    else:
+        # Få ut unika api_ids (för att inte fråga API:et flera gånger om du har dubbletter)
+        unique_cards = df['api_id'].unique()
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        updated_count = 0
+        for i, api_id in enumerate(unique_cards):
+            status_text.text(f"Uppdaterar kort {i+1} av {len(unique_cards)}...")
+            
             try:
                 res = requests.get(f"https://api.pokemontcg.io/v2/cards/{api_id}")
                 if res.status_code == 200:
                     card_data = res.json().get('data', {})
                     new_price = card_data.get('cardmarket', {}).get('prices', {}).get('averageSellPrice', 0.0)
-                    
-                    s.execute(text("""
-                        UPDATE collection 
-                        SET market_value = :p 
-                        WHERE user_id = :u AND api_id = :aid AND is_graded = FALSE
-                    """), {"p": new_price, "u": uid, "aid": api_id})
-                    updated += 1
+                    update_card_market_value(uid, api_id, new_price)
+                    updated_count += 1
             except Exception:
-                pass 
-            
+                pass
+                
+            # Liten paus för att inte spamma API:et och bli blockerad
             time.sleep(0.2)
-            progress_bar.progress((i + 1) / total)
-            status_text.text(f"Synkroniserar {i+1}/{total}...")
+            progress_bar.progress((i + 1) / len(unique_cards))
         
-        s.commit()
-
-    with conn.session as s:
-        tot_res = s.execute(text("SELECT SUM(market_value * quantity) FROM collection WHERE user_id = :u"), {"u": uid}).scalar()
-        tot_val = tot_res or 0.0
+        # När alla kort är klara, räkna ut nya totalvärdet och spara i historiken
+        new_df_cards = get_user_collection(uid)
+        new_df_sealed = get_user_sealed(uid)
         
-        s.execute(text("""
-            INSERT INTO portfolio_history (user_id, recorded_date, total_value) 
-            VALUES (:u, :d, :v)
-            ON DUPLICATE KEY UPDATE total_value = :v
-        """), {"u": uid, "d": date.today(), "v": tot_val})
-        s.commit()
-
-    progress_bar.empty()
-    status_text.empty()
-    st.success(f"Synk slutförd! {updated} kort uppdaterades och dagens portföljvärde har loggats.")
+        val_cards = (new_df_cards['market_value'] * new_df_cards['quantity']).sum() if not new_df_cards.empty else 0.0
+        val_sealed = (new_df_sealed['market_value'] * new_df_sealed['quantity']).sum() if not new_df_sealed.empty else 0.0
+        total_val = val_cards + val_sealed
+        
+        record_portfolio_history(uid, total_val)
+        
+        status_text.text("Synkronisering klar!")
+        st.success(f"{updated_count} kort uppdaterades och portföljens värde är nu loggat i din historik!")
+        st.balloons()

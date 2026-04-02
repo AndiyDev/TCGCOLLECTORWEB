@@ -206,3 +206,21 @@ def get_user_id_by_name(username):
         if res:
             return int(res[0])
     return None
+
+def update_card_market_value(uid, api_id, new_value):
+    conn = get_conn()
+    with conn.session as s:
+        # Uppdaterar marknadsvärdet för alla varianter av detta kort i din samling
+        s.execute(text("UPDATE collection SET market_value = :val WHERE user_id = :uid AND api_id = :aid"), {"val": new_value, "uid": uid, "aid": api_id})
+        s.commit()
+
+def record_portfolio_history(uid, total_value):
+    conn = get_conn()
+    with conn.session as s:
+        # Sparar dagens totalvärde. Finns redan ett värde idag, uppdateras det.
+        s.execute(text("""
+            INSERT INTO portfolio_history (user_id, recorded_date, total_value) 
+            VALUES (:uid, CURDATE(), :val) 
+            ON DUPLICATE KEY UPDATE total_value = :val
+        """), {"uid": uid, "val": total_value})
+        s.commit()
