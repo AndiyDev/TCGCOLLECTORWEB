@@ -1,7 +1,11 @@
-streamlit>=1.37.0
-SQLAlchemy>=2.0.0
-PyMySQL
+streamlit
+streamlit-bcrypt
+mysql-connector-python
+SQLAlchemy
 cryptography
 pandas
-bcrypt
+xlsxwriter
 requests
+beautifulsoup4
+opencv-python-headless
+Pillow

@@ -1,15 +1,12 @@
 TCGCOLLECTORWEB/
-├── app.py
-├── database.py
-├── currency_utils.py
-├── grading_utils.py
-├── requirements.txt
+├── app.py                # Login & Huvudmeny
+├── database.py           # All SQL-magi (Se till att v5-tabellerna är här)
+├── requirements.txt      # Alla bibliotek
 └── pages/
-    ├── 1_dashboard.py
-        ├── 2_collection.py
-            ├── 3_add_item.py
-                ├── 4_sync.py
-                    ├── 5_wishlist.py
-                        ├── 6_sets.py
-                            └── 7_card_details.py      # NY: Detaljvyn från dina bilder
-                            
+    ├── dashboard.py      # Översikt & Set-progression
+    ├── portfolio.py      # Ditt galleri (fd collection)
+    ├── add_item.py       # Lägg till kort/sealed från lokalt arkiv
+    ├── scanner.py        # Bildigenkänning mot dina GitHub-symboler
+    ├── sets_manager.py   # Master Library (Import & Set-hantering)
+    ├── maintenance.py    # Systemvård (fd sync)
+    └── profile.py        # Inställningar & Export

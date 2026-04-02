@@ -1,188 +1,248 @@
 import streamlit as st
+from streamlit_bcrypt import pdkdf2_sha256
 from sqlalchemy import text
-import pandas as pd
-import hashlib
+import time
 
+# --- ANSLUTNING ---
 def get_conn():
-    return st.connection("mysql", type="sql")
+    """Hanterar anslutningen till Streamlit MySQL."""
+    return st.connection("pokemon_db", type="sql")
 
-def hash_password(password):
-    return hashlib.sha256(str.encode(password)).hexdigest()
-
+# --- INITIALISERING ---
 def init_db():
+    """Skapar alla nödvändiga tabeller om de inte finns."""
     conn = get_conn()
     with conn.session as s:
-        # Users
-        s.execute(text("CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(50) UNIQUE, password VARCHAR(255))"))
-        # Global Catalog
+
+        # 1. MASTER SETS (Bibliotekets mappar)
         s.execute(text("""
-            CREATE TABLE IF NOT EXISTS global_cards (
-                api_id VARCHAR(100) PRIMARY KEY,  -- t.ex. 'me01-36'
-                name VARCHAR(255),
-                hp INT,
-                stage VARCHAR(50),               -- t.ex. 'Mega Evolution'
-                set_intern_id VARCHAR(50),       -- 'me01'
-                set_number_id VARCHAR(50),       -- 'ME1'
-                set_symbol_id VARCHAR(50),       -- 'MEG'
-                card_number VARCHAR(20),         -- '36'
-                total_in_set VARCHAR(20),        -- '132'
-                rarity VARCHAR(50),              -- 'Double Rare'
-                image_url VARCHAR(500),
-                attacks_json JSON,               -- Sparar Hammer-lanche, Frost Barrier etc.
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS global_sets (
+                set_intern_id VARCHAR(50) PRIMARY KEY, 
+                set_name VARCHAR(255),
+                total_cards INT,
+                symbol_path VARCHAR(500)
             )
         """))
-        # User Portfolio
+
+        # 2. MASTER CARDS (Det globala arkivet med NM-priser)
+        s.execute(text("""
+            CREATE TABLE IF NOT EXISTS global_cards (
+                api_id VARCHAR(100) PRIMARY KEY,
+                set_intern_id VARCHAR(50),
+                name VARCHAR(255),
+                hp INT,
+                card_number VARCHAR(20),
+                image_url VARCHAR(500),
+                price_normal_nm DECIMAL(10,2) DEFAULT 0,
+                price_holo_nm DECIMAL(10,2) DEFAULT 0,
+                price_reverse_nm DECIMAL(10,2) DEFAULT 0,
+                is_holo TINYINT(1) DEFAULT 0,
+                is_reverse TINYINT(1) DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (set_intern_id) REFERENCES global_sets(set_intern_id)
+            )
+        """))
+
+        # 3. BOOSTER OPENINGS (Loggbok för öppnade paket)
+        s.execute(text("""
+            CREATE TABLE IF NOT EXISTS booster_openings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT,
+                set_intern_id VARCHAR(50),
+                purchase_price DECIMAL(10,2),
+                date_opened TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+
+        # 4. USER ITEMS (Dina specifika exemplar / Portfölj / Önskelista)
         s.execute(text("""
             CREATE TABLE IF NOT EXISTS user_items (
                 id INT AUTO_INCREMENT PRIMARY KEY,
+                unique_id VARCHAR(100) UNIQUE,
                 user_id INT,
                 api_id VARCHAR(100),
+                opening_id INT DEFAULT NULL, 
+                
+                -- Status-flaggor
                 variant VARCHAR(50) DEFAULT 'Normal',
-                purchase_price DECIMAL(10, 2) DEFAULT 0.00,
-                is_bought BOOLEAN DEFAULT TRUE,
-                is_graded BOOLEAN DEFAULT FALSE,
-                grade_company VARCHAR(20),
-                grade_value VARCHAR(10),
-                cert_number VARCHAR(50),
+                condition_rank VARCHAR(10) DEFAULT 'NM',
+                is_bought TINYINT(1) DEFAULT 0,
+                is_wishlist TINYINT(1) DEFAULT 0, -- ⭐ Här är din integrerade önskelista
+                is_sold TINYINT(1) DEFAULT 0,     -- För budget-spårning
+                
+                -- Pris och Analys
+                purchase_price DECIMAL(10,2) DEFAULT 0,
+                sale_price DECIMAL(10,2) DEFAULT 0,
+                user_image_url VARCHAR(500),
+                detection_notes TEXT, 
+                
+                -- Spårning
+                edit_count INT DEFAULT 0,         -- Max 2 ändringar per booster-innehåll
                 date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                FOREIGN KEY (api_id) REFERENCES global_cards(api_id)
+                
+                FOREIGN KEY (api_id) REFERENCES global_cards(api_id) ON DELETE CASCADE,
+                FOREIGN KEY (opening_id) REFERENCES booster_openings(id) ON DELETE SET NULL
             )
         """))
-        # Sealed Collection
+
+        # 5. TRANSACTIONS (Budget och Historik)
         s.execute(text("""
-            CREATE TABLE IF NOT EXISTS sealed_collection (
+            CREATE TABLE IF NOT EXISTS user_transactions (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id INT,
-                product_name VARCHAR(255),
-                product_type VARCHAR(50),
-                quantity INT DEFAULT 1,
-                purchase_price DECIMAL(10, 2) DEFAULT 0.00,
-                market_value DECIMAL(10, 2) DEFAULT 0.00,
-                image_url VARCHAR(500),
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                trans_type ENUM('Inköp', 'Försäljning') NOT NULL,
+                item_name VARCHAR(255),
+                category EN_TYPE('Kort', 'Sealed', 'Booster', 'Annat'),
+                amount DECIMAL(10,2),
+                date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
-        # Portfolio History
+
+        # 6. PRICE HISTORY (För grafer och trender)
         s.execute(text("""
-            CREATE TABLE IF NOT EXISTS portfolio_history (
-                user_id INT, 
-                recorded_date DATE, 
-                total_value DECIMAL(12,2), 
-                PRIMARY KEY(user_id, recorded_date)
+            CREATE TABLE IF NOT EXISTS price_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                api_id VARCHAR(100),
+                price_nm DECIMAL(10,2),
+                price_type ENUM('Normal', 'Holo', 'Reverse'),
+                recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (api_id) REFERENCES global_cards(api_id) ON DELETE CASCADE
             )
         """))
-        # Wishlist
+
+        # 7. Users-tabellen
         s.execute(text("""
-            CREATE TABLE IF NOT EXISTS wishlist (
-                id INT AUTO_INCREMENT PRIMARY KEY, 
-                user_id INT, 
-                item_name VARCHAR(255), 
-                target_price DECIMAL(10,2), 
-                current_price DECIMAL(10,2), 
-                image_url VARCHAR(500)
-            )
-        """))
-        s.execute(text("""
-            CREATE TABLE IF NOT EXISTS global_cards (
-                api_id VARCHAR(100) PRIMARY KEY, -- t.ex. me01-36
-                name VARCHAR(255),
-                hp VARCHAR(10),
-                set_intern_id VARCHAR(50),      -- me01
-                set_number_id VARCHAR(50),      -- ME1
-                set_symbol_id VARCHAR(50),      -- MEG
-                card_number VARCHAR(20),        -- 36
-                image_url_local VARCHAR(500),   -- Länk till sparad fil
-                full_data_json JSON,            -- Här sparar vi attacker/weakness som rådata
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                email VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
         s.commit()
 
-# --- AUTH ---
-def register_user(username, password):
+# --- FUNKTIONER FÖR PORTFÖLJ ---
+
+def add_item_to_user(user_id, api_id, variant='Normal', condition='NM', price=0, is_bought=0, opening_id=None, notes=None, is_wishlist=0):
+    unique_id = f"USR{user_id}-{int(time.time())}"
     conn = get_conn()
-    hashed = hash_password(password)
     with conn.session as s:
-        try:
-            s.execute(text("INSERT INTO users (username, password) VALUES (:u, :p)"), {"u": username, "p": hashed})
+        # HÄR ANVÄNDER VI PARAMETRAR (:uid, :user OSV)
+        s.execute(text("""
+            INSERT INTO user_items (unique_id, user_id, api_id, variant, condition_rank, purchase_price, is_bought, opening_id, detection_notes, is_wishlist)
+            VALUES (:uid, :user, :api, :var, :cond, :price, :bought, :oid, :notes, :wish)
+        """), {
+            "uid": unique_id, "user": user_id, "api": api_id, "var": variant, 
+            "cond": condition, "price": price, "bought": is_bought, "oid": opening_id, 
+            "notes": notes, "wish": is_wishlist
+        })
+        s.commit()
+    return unique_id
+
+def delete_user_item(unique_id, user_id):
+    conn = get_conn()
+    with conn.session as s:
+        # Mycket säkrare än f-strings
+        s.execute(text("DELETE FROM user_items WHERE unique_id = :uid AND user_id = :user"), 
+                  {"uid": unique_id, "user": user_id})
+        s.commit()
+
+def get_user_portfolio(user_id):
+    """Hämtar hela samlingen med Master-data (Namn, Bild, Priser)."""
+    conn = get_conn()
+    query = """
+        SELECT ui.*, gc.name, gc.image_url, gc.set_intern_id, 
+               gc.price_normal_nm, gc.price_holo_nm, gc.price_reverse_nm
+        FROM user_items ui
+        JOIN global_cards gc ON ui.api_id = gc.api_id
+        WHERE ui.user_id = :uid
+        ORDER BY ui.date_added DESC
+    """
+    return conn.query(query, params={"uid": user_id}, ttl=0)
+
+# --- FUNKTIONER FÖR BOOSTER-ÖPPNING ---
+
+def create_booster_opening(user_id, set_id, price):
+    """Skapar en post för en booster-öppning och loggar kostnaden."""
+    conn = get_conn()
+    with conn.session as s:
+        result = s.execute(text("""
+            INSERT INTO booster_openings (user_id, set_intern_id, purchase_price)
+            VALUES (:uid, :sid, :price)
+        """), {"uid": user_id, "sid": set_id, "price": price})
+        opening_id = result.lastrowid
+        log_transaction(user_id, 'Inköp', f"Booster: {set_id}", price)
+        s.commit()
+        return opening_id
+
+def get_booster_details(opening_id):
+    """Hämtar alla kort som hör till en specifik booster-öppning."""
+    conn = get_conn()
+    query = """
+        SELECT ui.*, gc.name, gc.image_url, gc.price_normal_nm
+        FROM user_items ui
+        JOIN global_cards gc ON ui.api_id = gc.api_id
+        WHERE ui.opening_id = :oid
+    """
+    return conn.query(query, params={"oid": opening_id}, ttl=0)
+
+# --- FUNKTIONER FÖR BUDGET ---
+
+def log_transaction(user_id, t_type, name, amount):
+    """Loggar en pengatransaktion till budget-tabellen."""
+    conn = get_conn()
+    with conn.session as s:
+        s.execute(text("""
+            INSERT INTO user_transactions (user_id, trans_type, item_name, amount)
+            VALUES (:uid, :type, :name, :amount)
+        """), {"uid": user_id, "type": t_type, "name": name, "amount": amount})
+        s.commit()
+
+def get_financial_summary(user_id):
+    """Hämtar totalt spenderat och totalt tjänat."""
+    conn = get_conn()
+    query = """
+        SELECT 
+            SUM(CASE WHEN trans_type = 'Inköp' THEN amount ELSE 0 END) as total_spent,
+            SUM(CASE WHEN trans_type = 'Försäljning' THEN amount ELSE 0 END) as total_earned
+        FROM user_transactions WHERE user_id = :uid
+    """
+    return conn.query(query, params={"uid": user_id}).iloc[0]
+
+# Uppdaterad funktion i database.py
+def create_booster_item(user_id, set_id, price, status='Sealed'):
+    """Skapar en booster i databasen. Status kan vara 'Sealed' eller 'Opened'."""
+    unique_pack_id = f"PACK{user_id}-{int(time.time())}"
+    conn = get_conn()
+    with conn.session as s:
+        s.execute(text("""
+            INSERT INTO booster_openings (unique_id, user_id, set_intern_id, purchase_price, status)
+            VALUES (:uid, :user, :sid, :price, :status)
+        """), {
+            "uid": unique_pack_id, "user": user_id, "sid": set_id, "price": price, "status": status
+        })
+        s.commit()
+    return unique_pack_id
+
+def create_user(username, password):
+    conn = get_conn()
+    hash_pw = pdkdf2_sha256.hash(password)
+    try:
+        with conn.session as s:
+            s.execute(text("INSERT INTO users (username, password_hash) VALUES (:u, :p)"),
+                      {"u": username, "p": hash_pw})
             s.commit()
-            return True
-        except: return False
+        return True
+    except:
+        return False # Användarnamnet upptaget
 
 def verify_user(username, password):
     conn = get_conn()
-    hashed = hash_password(password)
-    with conn.session as s:
-        res = s.execute(text("SELECT id FROM users WHERE username = :u AND password = :p"), {"u": username, "p": hashed}).fetchone()
-        return res[0] if res else None
-
-# --- CORE LOGIC (Cards) ---
-def add_item_to_user(uid, card_data, variant, p_price, is_graded=False, g_comp=None, g_val=None, cert=None):
-    conn = get_conn()
-    with conn.session as s:
-        s.execute(text("""
-            INSERT INTO global_cards (api_id, name, set_id, set_name, card_number, image_url, market_price)
-            VALUES (:aid, :n, :sid, :sn, :num, :img, :mp)
-            ON DUPLICATE KEY UPDATE market_price = :mp, image_url = :img
-        """), {
-            "aid": card_data['id'], "n": card_data['name'], "sid": card_data['set']['id'],
-            "sn": card_data['set']['name'], "num": card_data['number'], 
-            "img": card_data['images']['small'], "mp": card_data.get('cardmarket', {}).get('prices', {}).get('averageSellPrice', 0.0)
-        })
-        s.execute(text("""
-            INSERT INTO user_items (user_id, api_id, variant, purchase_price, is_graded, grade_company, grade_value, cert_number)
-            VALUES (:uid, :aid, :var, :pp, :ig, :gc, :gv, :cert)
-        """), {"uid": uid, "aid": card_data['id'], "var": variant, "pp": p_price, "ig": is_graded, "gc": g_comp, "gv": g_val, "cert": cert})
-        s.commit()
-
-def get_user_portfolio(uid):
-    conn = get_conn()
-    return conn.query("""
-        SELECT ui.*, gc.name, gc.image_url, gc.market_price, gc.set_id, gc.set_name 
-        FROM user_items ui 
-        JOIN global_cards gc ON ui.api_id = gc.api_id 
-        WHERE ui.user_id = :uid
-    """, params={"uid": uid}, ttl=0)
-
-# --- SEALED PRODUCTS ---
-def add_sealed_product(uid, name, p_type, qty, p_price, m_val, img):
-    conn = get_conn()
-    with conn.session as s:
-        s.execute(text("""
-            INSERT INTO sealed_collection (user_id, product_name, product_type, quantity, purchase_price, market_value, image_url) 
-            VALUES (:uid, :n, :t, :q, :pp, :mv, :img)
-        """), {"uid": uid, "n": name, "t": p_type, "q": qty, "pp": p_price, "mv": m_val, "img": img})
-        s.commit()
-
-def get_user_sealed(uid):
-    conn = get_conn()
-    return conn.query("SELECT * FROM sealed_collection WHERE user_id = :uid", params={"uid": uid}, ttl=0)
-
-# --- UTILS (History & Wishlist) ---
-def get_portfolio_history(uid):
-    conn = get_conn()
-    return conn.query("SELECT recorded_date, total_value FROM portfolio_history WHERE user_id = :uid ORDER BY recorded_date ASC", params={"uid": uid}, ttl=0)
-
-def get_wishlist(uid):
-    conn = get_conn()
-    return conn.query("SELECT * FROM wishlist WHERE user_id = :uid", params={"uid": uid}, ttl=0)
-
-def update_card_market_value(api_id, new_value):
-    conn = get_conn()
-    with conn.session as s:
-        # Uppdaterar det globala marknadsvärdet för kortet
-        s.execute(text("UPDATE global_cards SET market_price = :val WHERE api_id = :aid"), {"val": new_value, "aid": api_id})
-        s.commit()
-
-def record_portfolio_history(uid, total_value):
-    conn = get_conn()
-    with conn.session as s:
-        # Sparar dagens totalvärde i historiken
-        s.execute(text("""
-            INSERT INTO portfolio_history (user_id, recorded_date, total_value) 
-            VALUES (:uid, CURDATE(), :val) 
-            ON DUPLICATE KEY UPDATE total_value = :val
-        """), {"uid": uid, "val": total_value})
-        s.commit()
+    res = conn.query("SELECT id, password_hash FROM users WHERE username = :u", 
+                     params={"u": username})
+    if not res.empty:
+        stored_hash = res.iloc[0]['password_hash']
+        if pdkdf2_sha256.verify(password, stored_hash):
+            return res.iloc[0]['id']
+    return None
