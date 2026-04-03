@@ -92,7 +92,7 @@ def init_db():
                 user_id INT,
                 trans_type ENUM('Inköp', 'Försäljning') NOT NULL,
                 item_name VARCHAR(255),
-                category EN_TYPE('Kort', 'Sealed', 'Booster', 'Annat'),
+                category ENUM('Kort', 'Sealed', 'Booster', 'Annat'), # <--- FIXED
                 amount DECIMAL(10,2),
                 date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
