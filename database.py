@@ -13,9 +13,7 @@ def init_db():
     """Skapar alla nödvändiga tabeller om de inte finns."""
     conn = get_conn()
     with conn.session as s:
-        s.execute(text("DROP TABLE IF EXISTS users"))
-        s.commit()
-
+        
         # 1. MASTER SETS (Bibliotekets mappar)
         s.execute(text("""
             CREATE TABLE IF NOT EXISTS global_sets (
@@ -94,7 +92,7 @@ def init_db():
                 user_id INT,
                 trans_type ENUM('Inköp', 'Försäljning') NOT NULL,
                 item_name VARCHAR(255),
-                category ENUM('Kort', 'Sealed', 'Booster', 'Annat'), # <--- FIXED
+                category ENUM('Kort', 'Sealed', 'Booster', 'Annat'),
                 amount DECIMAL(10,2),
                 date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -112,7 +110,7 @@ def init_db():
             )
         """))
 
-        # 7. Users-tabellen
+        # 7. Users-tabellen (Nu permanent skyddad!)
         s.execute(text("""
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -130,7 +128,6 @@ def add_item_to_user(user_id, api_id, variant='Normal', condition='NM', price=0,
     unique_id = f"USR{user_id}-{int(time.time())}"
     conn = get_conn()
     with conn.session as s:
-        # HÄR ANVÄNDER VI PARAMETRAR (:uid, :user OSV)
         s.execute(text("""
             INSERT INTO user_items (unique_id, user_id, api_id, variant, condition_rank, purchase_price, is_bought, opening_id, detection_notes, is_wishlist)
             VALUES (:uid, :user, :api, :var, :cond, :price, :bought, :oid, :notes, :wish)
@@ -145,7 +142,6 @@ def add_item_to_user(user_id, api_id, variant='Normal', condition='NM', price=0,
 def delete_user_item(unique_id, user_id):
     conn = get_conn()
     with conn.session as s:
-        # Mycket säkrare än f-strings
         s.execute(text("DELETE FROM user_items WHERE unique_id = :uid AND user_id = :user"), 
                   {"uid": unique_id, "user": user_id})
         s.commit()
@@ -212,7 +208,6 @@ def get_financial_summary(user_id):
     """
     return conn.query(query, params={"uid": user_id}).iloc[0]
 
-# Uppdaterad funktion i database.py
 def create_booster_item(user_id, set_id, price, status='Sealed'):
     """Skapar en booster i databasen. Status kan vara 'Sealed' eller 'Opened'."""
     unique_pack_id = f"PACK{user_id}-{int(time.time())}"
@@ -229,14 +224,13 @@ def create_booster_item(user_id, set_id, price, status='Sealed'):
 
 def create_user(username, password):
     conn = get_conn()
-    # Generera salt och hasha lösenordet
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
     
     try:
         with conn.session as s:
             s.execute(text("INSERT INTO users (username, password_hash) VALUES (:u, :p)"),
-                      {"u": username, "p": hashed.decode('utf-8')}) # Spara som string i DB
+                      {"u": username, "p": hashed.decode('utf-8')})
             s.commit()
         return True
     except Exception as e:
@@ -250,7 +244,6 @@ def verify_user(username, password):
     
     if not res.empty:
         stored_hash = res.iloc[0]['password_hash'].encode('utf-8')
-        # Jämför det inskickade lösenordet med det lagrade hashet
         if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
             return res.iloc[0]['id']
     return None
