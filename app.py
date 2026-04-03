@@ -4,25 +4,10 @@ from database import init_db, verify_user, create_user
 import re
 
 # --- 1. SÄKERHETS-CONFIG ---
-st.set_page_config(
-    page_title="TCG Collector Pro v5.5",
-    page_icon="🛡️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="TCG Collector Pro v5.5", page_icon="🛡️", layout="wide")
 
-# --- 2. INITIALISERA SYSTEM ---
-""" if "db_init" not in st.session_state:
-    try:
-        init_db()
-        st.session_state.db_init = True
-    except Exception as e:
-        st.error("Kunde inte ansluta till säkerhetsservern.")
-        st.stop() """
-
+# --- 2. INITIALISERA SYSTEM & DATABAS ---
 if "db_init" not in st.session_state:
-    # Vi tar bort try-except här. Om det blir fel nu, VILL vi att Streamlit 
-    # ska blöda röd text så vi ser exakt om det är lösenordet eller IP:n som spökar.
     init_db()
     st.session_state.db_init = True
 
