@@ -14,6 +14,7 @@ def init_db():
     conn = get_conn()
     with conn.session as s:
         s.execute(text("DROP TABLE IF EXISTS users"))
+        s.commit()
 
         # 1. MASTER SETS (Bibliotekets mappar)
         s.execute(text("""
