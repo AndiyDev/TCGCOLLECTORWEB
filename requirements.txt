@@ -1,6 +1,6 @@
 streamlit
 bcrypt
-mysql-connector-python
+PyMySQL
 SQLAlchemy
 cryptography
 pandas
