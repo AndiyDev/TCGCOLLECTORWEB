@@ -12,13 +12,19 @@ st.set_page_config(
 )
 
 # --- 2. INITIALISERA SYSTEM ---
-if "db_init" not in st.session_state:
+""" if "db_init" not in st.session_state:
     try:
         init_db()
         st.session_state.db_init = True
     except Exception as e:
         st.error("Kunde inte ansluta till säkerhetsservern.")
-        st.stop()
+        st.stop() """
+
+if "db_init" not in st.session_state:
+    # Vi tar bort try-except här. Om det blir fel nu, VILL vi att Streamlit 
+    # ska blöda röd text så vi ser exakt om det är lösenordet eller IP:n som spökar.
+    init_db()
+    st.session_state.db_init = True
 
 # --- 3. SESSION STATE MANAGEMENT ---
 if "logged_in" not in st.session_state:
