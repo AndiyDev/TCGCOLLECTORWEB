@@ -19,15 +19,11 @@ if "logged_in" not in st.session_state:
     st.session_state.login_attempts = 0
     st.session_state.last_activity = time.time()
 
-# --- 4. SESSION TIMEOUT (Säkerhet: 30 minuter) ---
-TIMEOUT_SECONDS = 1800 
-if st.session_state.logged_in:
-    if time.time() - st.session_state.last_activity > TIMEOUT_SECONDS:
-        st.session_state.logged_in = False
-        st.warning("Din session har löpt ut av säkerhetsskäl. Vänligen logga in igen.")
-        time.sleep(2)
-        st.rerun()
-    st.session_state.last_activity = time.time()
+# --- 4. INPUT SANITIZATION ---
+def sanitize_input(text_input):
+    if not text_input: return ""
+    clean = re.compile('<.*?>')
+    return re.sub(clean, '', str(text_input)).strip()
 
 # --- 5. INPUT SANITIZATION (Skydd mot kod-injektion) ---
 def sanitize_input(text_input):
